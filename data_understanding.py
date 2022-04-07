@@ -1,7 +1,7 @@
 from typing import List
 from pandas import DataFrame
 from matplotlib import pyplot as plt
-from utils import read_data, get_subset_by_variable
+from utils import read_data, get_subset_by_variable, get_temporal_records, SECONDS_IN_DAY
 import numpy as np
 
 
@@ -32,6 +32,9 @@ def print_values_hist(variable_name: str, df: DataFrame, bins: List):
 
 
 data = read_data()
+
+get_temporal_records(data, SECONDS_IN_DAY)
+
 print_values_bar('mood', data)
 print_values_bar('circumplex.arousal', data)
 print_values_bar('circumplex.valence', data)

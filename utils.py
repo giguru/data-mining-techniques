@@ -27,15 +27,32 @@ def get_temporal_records(df: DataFrame, history: int):
     :param history: In seconds
     :return:
     """
-    sorted_df = df.sort_values(by=['timestamp'])
-    records = []
+    # Take the mean mood per (day and user)
+    df_only_mood = df[df['variable'] == 'mood']
+    df_mean_mood_per_date_and_user = df_only_mood.groupby(
+        [df_only_mood['time'].dt.date, df_only_mood['id']]
+    ).agg({
+        'value': 'mean',
+        'timestamp': 'max',
+        'time': 'max',
+        'id': 'first',  # Retain the value
+        'variable': 'first'  # Retain the value
+    })
 
-    running_list = []  # type: List[Dict]
+    # Data without the mood column
+    df_without_mood = df[df['variable'] != 'mood']
+
+    # Now create one data frame with the mean mood data and the non-mood data
+    sorted_df = pd.concat([df_mean_mood_per_date_and_user, df_without_mood]).sort_values(by=['timestamp'])
+
+    records = []
+    running_window = []  # type: List[pd.Series]
+
     for index, row in tqdm(sorted_df.iterrows(), total=len(sorted_df), desc="Formatting records"):
         if row['variable'] == 'mood':
             # Remove records in running list before time frame
             first_index_in_frame = 0
-            for idx, running_row in enumerate(running_list):
+            for idx, running_row in enumerate(running_window):
                 if running_row['timestamp'] < row['timestamp'] - history:
                     first_index_in_frame = idx
                 else:
@@ -43,13 +60,14 @@ def get_temporal_records(df: DataFrame, history: int):
                     # frame, you can assume the rest is also in the frame.
                     break
             if first_index_in_frame > 0:
-                running_list = running_list[first_index_in_frame:]
+                running_window = running_window[first_index_in_frame:]
 
             records.append([
                 # Only append data of the user
-                [r for r in running_list if r['id'] == row['id']],
+                [r for r in running_window if r['id'] == row['id']],
+                # the target
                 row['value']
             ])
 
-        running_list.append(row)
+        running_window.append(row)
     return records
