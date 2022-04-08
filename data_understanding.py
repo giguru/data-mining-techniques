@@ -33,8 +33,6 @@ def print_values_hist(variable_name: str, df: DataFrame, bins: List):
 
 data = read_data()
 
-records = get_temporal_records(data, SECONDS_IN_DAY * 2)
-
 print_values_bar('mood', data)
 print_values_bar('circumplex.arousal', data)
 print_values_bar('circumplex.valence', data)

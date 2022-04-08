@@ -12,7 +12,11 @@ def read_data(**kwargs):
     dtypes = {}
     df = pd.read_csv('dataset_mood_smartphone.csv', dtype=dtypes, parse_dates=['time'],**kwargs)
 
+    # Added timestamp for computational optimization
     df['timestamp'] = df['time'].values.astype(np.int64) // 10 ** 9 # divide by 10^9, because the value is in nanoseconds
+
+    # Added day of the week, because people have biases towards e.g. Mondays
+    df['week_day'] = df['time'].dt.dayofweek
     return df
 
 
@@ -30,6 +34,7 @@ def get_temporal_records(df: DataFrame, history: int, aggregation_actions: Dict[
     """
     if aggregation_actions is None:
         aggregation_actions = {}
+
     # The mean must be always average
     aggregation_actions['mood'] = 'mean'
 
@@ -72,7 +77,7 @@ def get_temporal_records(df: DataFrame, history: int, aggregation_actions: Dict[
             records.append([
                 # Only append data of the user, but remove the ID.
                 # The ID is irrelevant for any machine learning model.
-                [r.drop(['id']) for r in running_window if r['id'] == row['id']],
+                [r.drop(['id']).to_dict() for r in running_window if r['id'] == row['id']],
                 # the target
                 row['value']
             ])
