@@ -20,30 +20,36 @@ def get_subset_by_variable(variable_name: str, df: DataFrame):
     return df[df['variable'] == variable_name]
 
 
-def get_temporal_records(df: DataFrame, history: int):
+def get_temporal_records(df: DataFrame, history: int, aggregation_actions: Dict[str, str] = None):
     """
 
     :param df:
     :param history: In seconds
     :return:
     """
-    # Take the mean mood per (day and user)
-    df_only_mood = df[df['variable'] == 'mood']
-    df_mean_mood_per_date_and_user = df_only_mood.groupby(
-        [df_only_mood['time'].dt.date, df_only_mood['id']]
-    ).agg({
-        'value': 'mean',
-        'timestamp': 'max',
-        'time': 'max',
-        'id': 'first',  # Retain the value
-        'variable': 'first'  # Retain the value
-    })
+    if aggregation_actions is None:
+        aggregation_actions = {}
+    # The mean must be always average
+    aggregation_actions['mood'] = 'mean'
 
-    # Data without the mood column
-    df_without_mood = df[df['variable'] != 'mood']
+    for variable_key, agg_func in enumerate(aggregation_actions):
+        df_only_variable = df[df['variable'] == variable_key]
+        df_aggregate_variable_per_date_and_user = df_only_variable.groupby(
+            [df_only_variable['time'].dt.date, df_only_variable['id']]
+        ).agg({
+            'value': agg_func,
+            'timestamp': 'max',
+            'time': 'max',
+            'id': 'first',  # Retain the value
+            'variable': 'first'  # Retain the value
+        })
+
+        # Data without the variable column
+        df_without_variable = df[df['variable'] != variable_key]
+        df = pd.concat([df_aggregate_variable_per_date_and_user, df_without_variable])
 
     # Now create one data frame with the mean mood data and the non-mood data
-    sorted_df = pd.concat([df_mean_mood_per_date_and_user, df_without_mood]).sort_values(by=['timestamp'])
+    sorted_df = df.sort_values(by=['timestamp'])
 
     records = []
     running_window = []  # type: List[pd.Series]
