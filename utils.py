@@ -32,7 +32,7 @@ def get_temporal_records(df: DataFrame, history: int, aggregation_actions: Dict[
     # The mean must be always average
     aggregation_actions['mood'] = 'mean'
 
-    for variable_key, agg_func in enumerate(aggregation_actions):
+    for variable_key, agg_func in aggregation_actions.items():
         df_only_variable = df[df['variable'] == variable_key]
         df_aggregate_variable_per_date_and_user = df_only_variable.groupby(
             [df_only_variable['time'].dt.date, df_only_variable['id']]
