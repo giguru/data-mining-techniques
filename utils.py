@@ -7,6 +7,21 @@ from tqdm import tqdm
 
 SECONDS_IN_DAY = 3600*24
 
+VARIABLES_WITH_UNFIXED_RANGE = [
+    'screen',
+    'appCat.builtin',
+    'appCat.communication',
+    'appCat.entertainment',
+    'appCat.finance',
+    'appCat.game',
+    'appCat.office',
+    'appCat.other',
+    'appCat.social',
+    'appCat.travel',
+    'appCat.unknown',
+    'appCat.utilities',
+    'appCat.weather'
+]
 
 def read_data(**kwargs):
     dtypes = {}

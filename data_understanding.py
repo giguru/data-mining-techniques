@@ -1,7 +1,7 @@
 from typing import List
 from pandas import DataFrame
 from matplotlib import pyplot as plt
-from utils import read_data, get_subset_by_variable, get_temporal_records, SECONDS_IN_DAY
+from utils import read_data, get_subset_by_variable, get_temporal_records, SECONDS_IN_DAY, VARIABLES_WITH_UNFIXED_RANGE
 import numpy as np
 
 
@@ -38,23 +38,7 @@ print_values_bar('circumplex.arousal', data)
 print_values_bar('circumplex.valence', data)
 print_values_hist('activity', data, list(np.linspace(0, 1, 20)))
 
-# The range of screen time is variable
-variables_with_unfixed_range = [
-    'screen',
-    'appCat.builtin',
-    'appCat.communication',
-    'appCat.entertainment',
-    'appCat.finance',
-    'appCat.game',
-    'appCat.office',
-    'appCat.other',
-    'appCat.social',
-    'appCat.travel',
-    'appCat.unknown',
-    'appCat.utilities',
-    'appCat.weather'
-]
-for variable_name in variables_with_unfixed_range:
+for variable_name in VARIABLES_WITH_UNFIXED_RANGE:
     variable_subset = get_subset_by_variable('screen', data)['value']
     min_value = min(variable_subset)
     max_value = max(variable_subset)
