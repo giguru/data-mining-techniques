@@ -25,6 +25,7 @@ def get_temporal_records(df: DataFrame, history: int, aggregation_actions: Dict[
 
     :param df:
     :param history: In seconds
+    :param aggregation_actions:
     :return:
     """
     if aggregation_actions is None:
@@ -51,7 +52,7 @@ def get_temporal_records(df: DataFrame, history: int, aggregation_actions: Dict[
     # Now create one data frame with the mean mood data and the non-mood data
     sorted_df = df.sort_values(by=['timestamp'])
 
-    records = []
+    records = []  # type: List[List[pd.Series, float]]
     running_window = []  # type: List[pd.Series]
 
     for index, row in tqdm(sorted_df.iterrows(), total=len(sorted_df), desc="Formatting records"):
@@ -69,8 +70,9 @@ def get_temporal_records(df: DataFrame, history: int, aggregation_actions: Dict[
                 running_window = running_window[first_index_in_frame:]
 
             records.append([
-                # Only append data of the user
-                [r for r in running_window if r['id'] == row['id']],
+                # Only append data of the user, but remove the ID.
+                # The ID is irrelevant for any machine learning model.
+                [r.drop(['id']) for r in running_window if r['id'] == row['id']],
                 # the target
                 row['value']
             ])
