@@ -44,7 +44,7 @@ def print_values_hist(variable_name: str, df: DataFrame, bins: List):
     plt.show()
 
 
-def plot_temporal_effects(df: DataFrame, time_window: str, variable_name: str):
+def plot_temporal_effects(df: DataFrame, time_window: str, variable_name: str, **kwargs):
     """
     :param df: DataFrame with time as index and variable_name as value.
                 Example: t=0,1,...,24 (hour)
@@ -57,16 +57,16 @@ def plot_temporal_effects(df: DataFrame, time_window: str, variable_name: str):
     this_path = os.path.join(OUTPUT_PATH, 'temporal_dependency')
     check_existing_folder(this_path)
     plt.plot(df.index,
-             df,
+             df['skipna_mean'],
              label=time_window
     )
+    plt.fill_between(df.index, df['lower'], df['upper'], alpha=0.2)
     plt.title(f"Time evolution mean of '{variable_name}'")
     plt.xlabel(time_window)
     plt.ylabel(variable_name)
     plt.xticks(rotation=45)
     plt.show()
-    plt.savefig(os.path.join(this_path, f'{time_window}.pdf'))
-    plt.tight_layout()
+    plt.savefig(os.path.join(this_path, f'{time_window}.pdf'), bbox_inches='tight')
     plt.close()
 
 data = read_data()
@@ -101,6 +101,7 @@ for variable_name in variables_with_unfixed_range:
 print(f"Occurences of variable='call': {len(get_subset_by_variable('call', data))}")
 print(f"Occurences of variable='sms': {len(get_subset_by_variable('sms', data))}")
 
+#
 # check periodicity
 data['hour'] = data.time.dt.hour
 data['date'] = data.time.dt.date
@@ -114,8 +115,15 @@ def skipna_mean(df):
     return df.mean(skipna=True)
 cats = [ 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
 
+def skipna_std(df):
+    return df.std(skipna=True)/np.sqrt(len(df)-sum(df.isna()))
+
 for time_window  in  ['hour', 'date', 'weekday', 'month']:
-    this_mean = data.loc[data['variable'] == item].groupby(by=[time_window])['value'].agg(skipna_mean)
-    if time_window=='weekday':
+    this_mean = data.loc[data['variable'] == item].groupby(by=[time_window])['value'].agg([skipna_mean,
+                                                                                           skipna_std])
+    this_mean['lower'] = this_mean['skipna_mean'] - 1.96 * this_mean['skipna_std']
+    this_mean['upper'] = this_mean['skipna_mean'] + 1.96 * this_mean['skipna_std']
+
+    if time_window == 'weekday':
         this_mean = this_mean.reindex(cats)
     plot_temporal_effects(this_mean, time_window,  'mood')
