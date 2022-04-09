@@ -17,4 +17,5 @@ records = get_temporal_records(data,
                                 **({ key: np.mean for key in VARIABLES_WITH_UNFIXED_RANGE })
                                 })
 
-feature_matrix = np.array([r[0].values() + r[1:] for r in records])
+feature_matrix = np.array([list(r[0].values()) + r[1:] for r in records])
+print(feature_matrix)
