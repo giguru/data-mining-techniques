@@ -121,7 +121,8 @@ def get_temporal_records(df: DataFrame,
 
             records.append([
                 features,
-                row['value']  # the target
+                row['value'],  # the target
+                row['id']
             ])
 
         running_window.append(row)
