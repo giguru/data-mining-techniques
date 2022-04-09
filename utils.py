@@ -85,7 +85,7 @@ def get_temporal_records(df: DataFrame,
     # Now create one data frame with the mean mood data and the non-mood data
     sorted_df = df.sort_values(by=['timestamp'])
 
-    records = []  # type: List[List[pd.Series, float]]
+    records = []  # type: List[List[Dict, float, str]]
     running_window = []  # type: List[pd.Series]
 
     for index, row in tqdm(sorted_df.iterrows(), total=len(sorted_df), desc="Formatting records"):
@@ -109,7 +109,7 @@ def get_temporal_records(df: DataFrame,
                 # The ID is irrelevant for every machine learning model.
                 features = [r.drop('id') for r in running_window if r['id'] == row['id']]
             else:
-                features = defaultdict(list)
+                features = {key: [] for key in aggregation_actions_total_history.keys()}
                 for r in running_window:
                     if r['id'] == row['id'] and r['variable'] in aggregation_actions_total_history:
                         features[r['variable']].append(r['value'])
@@ -117,7 +117,7 @@ def get_temporal_records(df: DataFrame,
                 features = dict(features)
                 for variable_key, variable_values in features.items():
                     agg_func = aggregation_actions_total_history[variable_key]
-                    features[variable_key] = agg_func(variable_values)
+                    features[variable_key] = agg_func(variable_values) if len(variable_values) > 0 else None
 
             records.append([
                 features,
