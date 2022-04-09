@@ -112,3 +112,6 @@ for time_window  in  ['hour', 'date', 'weekday', 'month']:
     if time_window == 'weekday':
         this_mean = this_mean.reindex(cats)
     plot_temporal_effects(this_mean, time_window,  'mood')
+
+# check volatility per id
+data.loc[data['variable'] == 'mood'].groupby(by=['id'])['value'].agg(np.std)
