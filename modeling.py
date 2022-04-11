@@ -14,7 +14,7 @@ records = get_temporal_records(data,
                                 'activity': np.mean,
                                 'call': sum,
                                 'sms': sum,
-                                **({ key: np.mean for key in VARIABLES_WITH_UNFIXED_RANGE })
+                                **({ key: [np.mean, sum, len] for key in VARIABLES_WITH_UNFIXED_RANGE })
                                 })
 
 feature_matrix = np.array([list(r[0].values()) + r[1:] for r in records])
