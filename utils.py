@@ -1,10 +1,14 @@
-from collections import defaultdict
-
 import pandas as pd
 import numpy as np
 from pandas import DataFrame
-from typing import List, Dict, Callable
+from typing import List, Dict, Callable, Union
 from tqdm import tqdm
+
+
+__all__ = [
+    'SECONDS_IN_DAY', 'VARIABLES_WITH_UNFIXED_RANGE', 'read_data', 'get_temporal_records',
+    'get_subset_by_variable'
+]
 
 
 SECONDS_IN_DAY = 3600*24
@@ -40,6 +44,9 @@ def read_data(**kwargs):
 def get_subset_by_variable(variable_name: str, df: DataFrame):
     return df[df['variable'] == variable_name]
 
+def do_agg_func(agg_func, variable_values):
+    return agg_func(variable_values) if len(variable_values) > 0 else None
+
 
 def aggregate_actions_per_user_per_day(df: DataFrame, variable_key, agg_func):
     df_only_variable = df[df['variable'] == variable_key]
@@ -62,7 +69,7 @@ def aggregate_actions_per_user_per_day(df: DataFrame, variable_key, agg_func):
 def get_temporal_records(df: DataFrame,
                          history: int,
                          aggregation_actions_per_user_per_day: Dict[str, str] = None,
-                         aggregation_actions_total_history: Dict[str, Callable] = None
+                         aggregation_actions_total_history: Dict[str, Union[Callable, List[Callable]]] = None
                          ):
     """
 
@@ -115,9 +122,19 @@ def get_temporal_records(df: DataFrame,
                         features[r['variable']].append(r['value'])
 
                 features = dict(features)
-                for variable_key, variable_values in features.items():
+                keys = list(features.keys())
+                for variable_key in keys:
+                    variable_values = features[variable_key]
+                    del features[variable_key]
+
                     agg_func = aggregation_actions_total_history[variable_key]
-                    features[variable_key] = agg_func(variable_values) if len(variable_values) > 0 else None
+                    if callable(agg_func):
+                        name = getattr(agg_func, '__name__')
+                        features[f"{variable_key}_{name}"] = do_agg_func(agg_func, variable_values)
+                    elif type(agg_func) == list:
+                        for func in agg_func:
+                            name = getattr(func, '__name__')
+                            features[f"{variable_key}_{name}"] = do_agg_func(func, variable_values)
 
             records.append([
                 features,
