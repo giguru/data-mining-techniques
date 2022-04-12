@@ -1,7 +1,7 @@
 from typing import List
 from pandas import DataFrame
 from matplotlib import pyplot as plt
-from utils import read_data, get_subset_by_variable, get_temporal_records, SECONDS_IN_DAY, VARIABLES_WITH_UNFIXED_RANGE
+from utils import read_data, get_subset_by_variable, VARIABLES_WITH_UNFIXED_RANGE
 import numpy as np
 from pandas.api.types import is_datetime64_any_dtype as is_datetime
 import os
@@ -37,6 +37,7 @@ def print_values_hist(variable_name: str, df: DataFrame, bins: List):
     """
     :param variable_name: Variable name of the variable column in the CSV
     :param df:
+    :param bins:
     """
     subset = get_subset_by_variable(variable_name, df)
     plt.hist(x=subset['value'].to_list(), bins=bins)
@@ -69,7 +70,24 @@ def plot_temporal_effects(df: DataFrame, time_window: str, variable_name: str, *
     plt.savefig(os.path.join(this_path, f'{time_window}.pdf'), bbox_inches='tight')
     plt.close()
 
+def print_unique_values(key, df):
+    print(f"Unique values for variable='{key}': {get_subset_by_variable(key, df)['value'].unique()}")
+
+
 data = read_data()
+
+unique_users = list(data['id'].unique())
+records_per_user = {}
+for user_id in unique_users:
+    records_per_user[user_id] = len(data[data.id == user_id])
+print(f"There are {len(unique_users)} unique users with number of records "
+      f"mu={np.mean(list(records_per_user.values()))}, "
+      f"sigma={np.var(list(records_per_user.values()))}")
+
+print_unique_values('mood', data)
+print_unique_values('activity', data)
+print_unique_values('circumplex.arousal', data)
+print_unique_values('circumplex.valence', data)
 
 print_values_bar('mood', data)
 print_values_bar('circumplex.arousal', data)
@@ -115,3 +133,4 @@ for time_window  in  ['hour', 'date', 'weekday', 'month']:
 
 # check volatility per id
 data.loc[data['variable'] == 'mood'].groupby(by=['id'])['value'].agg(np.std)
+

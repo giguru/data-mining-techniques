@@ -1,8 +1,16 @@
 import pandas as pd
+from pandas import DataFrame
 import os
 from utils import get_temporal_records, read_data, SECONDS_IN_DAY, VARIABLES_WITH_UNFIXED_RANGE, fill_defaults
+import seaborn as sn
 import numpy as np
 import os
+from matplotlib import pyplot as plt
+from matplotlib.pyplot import figure
+from sklearn.tree import DecisionTreeClassifier
+from sklearn.neighbors import KNeighborsClassifier
+figure(figsize=(20, 20), dpi=80)
+
 
 OUTPUT_PATH = './output/'
 
@@ -14,6 +22,8 @@ def check_existing_folder(this_path):
     if not CHECK_FOLDER:
         os.makedirs(MYDIR)
         print("created folder : ", MYDIR)
+
+
 
 data = read_data()
 
@@ -40,3 +50,16 @@ labels = ['circumplex.arousal', 'circumplex.valence', 'activity', 'call', 'sms']
 df = pd.DataFrame(feature_matrix, columns=labels)
 check_existing_folder(OUTPUT_PATH)
 df.to_csv(os.path.join(OUTPUT_PATH, f'feature_tab_{nday_window}.csv'), index=False)
+
+X = feature_matrix[:, :-2]  # The data for
+y = feature_matrix[:, -2]
+
+# Print correlation matrix
+corrMatrix = DataFrame(X, columns=records[0][0].keys()).apply(pd.to_numeric).corr(method='pearson')
+sn.heatmap(corrMatrix, annot=True)
+plt.show()
+
+# A simple decision tree
+mdl = DecisionTreeClassifier(n_neighbors=10)
+mdl = mdl.fit(X=X, y=y)
+print(mdl.score(X, y))
