@@ -7,7 +7,7 @@ from tqdm import tqdm
 
 __all__ = [
     'SECONDS_IN_DAY', 'VARIABLES_WITH_UNFIXED_RANGE', 'read_data', 'get_temporal_records',
-    'get_subset_by_variable'
+    'get_subset_by_variable', 'fill_defaults'
 ]
 
 
@@ -144,3 +144,9 @@ def get_temporal_records(df: DataFrame,
 
         running_window.append(row)
     return records
+
+def fill_defaults(items: List, wanted_count: int, default_value):
+    if len(items) < wanted_count:
+        return items + [default_value] * (wanted_count - len(items))
+    else:
+        return items

@@ -1,6 +1,6 @@
 import pandas as pd
 import os
-from utils import get_temporal_records, read_data, SECONDS_IN_DAY, VARIABLES_WITH_UNFIXED_RANGE
+from utils import get_temporal_records, read_data, SECONDS_IN_DAY, VARIABLES_WITH_UNFIXED_RANGE, fill_defaults
 import numpy as np
 import os
 
@@ -20,13 +20,16 @@ data = read_data()
 nday_window = 1
 records = get_temporal_records(data,
                                SECONDS_IN_DAY * nday_window,
-                               None,
+                               {'circumplex.arousal': np.mean,
+                                'call': sum,
+                                'week_day': lambda x: x[0]},
                                {# Just naively take the means
-                                'circumplex.arousal': np.mean,
+                                'circumplex.arousal': lambda daily_mean: np.mean(fill_defaults(daily_mean, nday_window, 0))/np.std(fill_defaults(daily_mean, nday_window, 0)),
                                 'circumplex.valence': np.mean,
                                 'activity': np.mean,
-                                'call': sum,
+                                'call': lambda n_calls: np.mean(n_calls)/np.max(n_calls),
                                 'sms': sum,
+                                'week_day': lambda x: (x[-1] + 1)%7 - 3
                                 **({ key: [np.mean, sum, len] for key in VARIABLES_WITH_UNFIXED_RANGE })
                                 })
 
