@@ -3,6 +3,7 @@ import numpy as np
 from pandas import DataFrame
 from typing import List, Dict, Callable, Union
 from tqdm import tqdm
+import math
 
 
 __all__ = [
@@ -12,6 +13,9 @@ __all__ = [
 
 
 SECONDS_IN_DAY = 3600*24
+
+# When building a features-target combination, some attributes may not have any data. If that's the case, this var is used
+MISSING_VALUE = 0
 
 VARIABLES_WITH_UNFIXED_RANGE = [
     'screen',
@@ -29,23 +33,39 @@ VARIABLES_WITH_UNFIXED_RANGE = [
     'appCat.weather'
 ]
 
+
 def read_data(**kwargs):
     dtypes = {}
-    df = pd.read_csv('dataset_mood_smartphone.csv', dtype=dtypes, parse_dates=['time'],**kwargs)
+    df = pd.read_csv('dataset_mood_smartphone.csv', dtype=dtypes, parse_dates=['time'], **kwargs)
 
     # Added timestamp for computational optimization
-    df['timestamp'] = df['time'].values.astype(np.int64) // 10 ** 9 # divide by 10^9, because the value is in nanoseconds
+    df['timestamp'] = df['time'].values.astype(np.int64) // 10 ** 9  # divide by 10^9, because value is in nanoseconds
 
     # Added day of the week, because people have biases towards e.g. Mondays
     df['week_day'] = df['time'].dt.dayofweek
+
+    invalid_rows = []
+    indices_to_drop = []
+
+    for index, row in tqdm(df.iterrows(), total=len(df), desc="Removing records with invalid values"):
+        if math.isnan(row['value']):
+            indices_to_drop.append(index)
+            invalid_rows.append((index, row['variable'], row['value']))
+            # Do not add rows with invalid values
+            continue
+
+    df = df.drop(indices_to_drop)
+    print(invalid_rows)
+    print(f"There are {len(invalid_rows)} invalid rows for {list({item[1] for item in invalid_rows})}")
     return df
 
 
-def get_subset_by_variable(variable_name: str, df: DataFrame):
+def get_subset_by_variable(variable_name: str, df: DataFrame) -> DataFrame:
     return df[df['variable'] == variable_name]
 
+
 def do_agg_func(agg_func, variable_values):
-    return agg_func(variable_values) if len(variable_values) > 0 else None
+    return agg_func(variable_values) if len(variable_values) > 0 else MISSING_VALUE
 
 
 def aggregate_actions_per_user_per_day(df: DataFrame, variable_key, agg_func):
@@ -96,6 +116,7 @@ def get_temporal_records(df: DataFrame,
     running_window = []  # type: List[pd.Series]
 
     for index, row in tqdm(sorted_df.iterrows(), total=len(sorted_df), desc="Formatting records"):
+        # Build a features-target combination
         if row['variable'] == 'mood':
             # Remove records in running list before time frame
             first_index_in_frame = 0
@@ -110,37 +131,39 @@ def get_temporal_records(df: DataFrame,
             if first_index_in_frame > 0:
                 running_window = running_window[first_index_in_frame:]
 
-            # Other variables you would like to have aggregated over the entire time period
-            if aggregation_actions_total_history is None:
-                # Only append data of the user, but remove the ID.
-                # The ID is irrelevant for every machine learning model.
-                features = [r.drop('id') for r in running_window if r['id'] == row['id']]
-            else:
-                features = {key: [] for key in aggregation_actions_total_history.keys()}
-                for r in running_window:
-                    if r['id'] == row['id'] and r['variable'] in aggregation_actions_total_history:
-                        features[r['variable']].append(r['value'])
+            # Only build it when there is data for the features.
+            if len(running_window) > 0:
+                # Other variables you would like to have aggregated over the entire time period
+                if aggregation_actions_total_history is None:
+                    # Only append data of the user, but remove the ID.
+                    # The ID is irrelevant for every machine learning model.
+                    features = [r.drop('id') for r in running_window if r['id'] == row['id']]
+                else:
+                    features = {key: [] for key in aggregation_actions_total_history.keys()}
+                    for r in running_window:
+                        if r['id'] == row['id'] and r['variable'] in aggregation_actions_total_history:
+                            features[r['variable']].append(r['value'])
 
-                features = dict(features)
-                keys = list(features.keys())
-                for variable_key in keys:
-                    variable_values = features[variable_key]
-                    del features[variable_key]
+                    features = dict(features)
+                    keys = list(features.keys())
+                    for variable_key in keys:
+                        variable_values = features[variable_key]
+                        del features[variable_key]
 
-                    agg_func = aggregation_actions_total_history[variable_key]
-                    if callable(agg_func):
-                        name = getattr(agg_func, '__name__')
-                        features[f"{variable_key}_{name}"] = do_agg_func(agg_func, variable_values)
-                    elif type(agg_func) == list:
-                        for func in agg_func:
-                            name = getattr(func, '__name__')
-                            features[f"{variable_key}_{name}"] = do_agg_func(func, variable_values)
+                        agg_func = aggregation_actions_total_history[variable_key]
+                        if callable(agg_func):
+                            name = getattr(agg_func, '__name__')
+                            features[f"{variable_key}_{name}"] = do_agg_func(agg_func, variable_values)
+                        elif type(agg_func) == list:
+                            for func in agg_func:
+                                name = getattr(func, '__name__')
+                                features[f"{variable_key}_{name}"] = do_agg_func(func, variable_values)
 
-            records.append([
-                features,
-                row['value'],  # the target
-                row['id']
-            ])
+                records.append([
+                    features,
+                    row['value'],  # the target
+                    row['id']
+                ])
 
         running_window.append(row)
     return records
