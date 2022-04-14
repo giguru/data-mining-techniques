@@ -1,17 +1,20 @@
+from dataclasses import dataclass
+
 import pandas as pd
 import numpy as np
-from pandas import DataFrame
-from typing import List, Dict, Callable, Union
+from pandas import DataFrame, Series
+from typing import List, Dict, Callable, Union, Any
 from tqdm import tqdm
+from datetime import datetime
 import math
 
 
 __all__ = [
     'SECONDS_IN_DAY', 'VARIABLES_WITH_UNFIXED_RANGE', 'read_data', 'get_temporal_records',
-    'get_subset_by_variable', 'fill_defaults'
+    'get_subset_by_variable', 'fill_defaults', 'keep_per_day', 'mean'
 ]
 
-
+DATE_FORMAT = '%Y-%m-%d'
 SECONDS_IN_DAY = 3600*24
 
 # When building a features-target combination, some attributes may not have any data. If that's the case, this var is used
@@ -32,6 +35,16 @@ VARIABLES_WITH_UNFIXED_RANGE = [
     'appCat.utilities',
     'appCat.weather'
 ]
+
+
+@dataclass
+class DatasetRow(dict):
+    id: str
+    time: np.datetime64
+    timestamp: np.int64
+    value: np.float64
+    variable: str
+    week_day: np.int64
 
 
 def read_data(**kwargs):
@@ -64,8 +77,12 @@ def get_subset_by_variable(variable_name: str, df: DataFrame) -> DataFrame:
     return df[df['variable'] == variable_name]
 
 
-def do_agg_func(agg_func, variable_values):
-    return agg_func(variable_values) if len(variable_values) > 0 else MISSING_VALUE
+def mean(values_list):
+    """
+    Custom mean function that defaults to zero if there are no values.
+    This function was necessary, because np.mean crashes when there are no values.
+    """
+    return np.mean(values_list) if len(values_list) > 0 else 0
 
 
 def aggregate_actions_per_user_per_day(df: DataFrame, variable_key, agg_func):
@@ -77,7 +94,8 @@ def aggregate_actions_per_user_per_day(df: DataFrame, variable_key, agg_func):
         'timestamp': 'max',
         'time': 'max',
         'id': 'first',  # Retain the value
-        'variable': 'first'  # Retain the value
+        'variable': 'first',  # Retain the value
+        'week_day': 'first'  # Retain the value
     })
 
     # Data without the variable column
@@ -86,15 +104,39 @@ def aggregate_actions_per_user_per_day(df: DataFrame, variable_key, agg_func):
     return df, df_aggregate_variable_per_date_and_user
 
 
+def keep_per_day(default: float):
+    def inner_keep_per_day(values_per_day: Dict[str, Any], row: Dict[str, Any], day_window: int, prefix: str):
+        result_dict = {}
+        for days_go in range(1, day_window + 1):
+            date_ago = datetime.fromtimestamp(row['timestamp'] - days_go * SECONDS_IN_DAY).strftime(DATE_FORMAT)
+            value_to_use = values_per_day[date_ago] if date_ago in values_per_day else default
+            result_dict[f"{prefix}_{days_go}_day_before"] = value_to_use
+        return result_dict
+    return inner_keep_per_day
+
+
+def start_of_day(timestamp: int):
+    """
+    You want to aggregate over the data of the entire day.
+    """
+    dt_object = datetime.fromtimestamp(timestamp).replace(hour=3,
+                                                          minute=0)
+    return datetime.timestamp(dt_object)
+
+
+def to_date_string(date_object: np.datetime64):
+    return date_object.strftime(DATE_FORMAT)
+
+
 def get_temporal_records(df: DataFrame,
-                         history: int,
+                         day_window: int,
                          aggregation_actions_per_user_per_day: Dict[str, str] = None,
                          aggregation_actions_total_history: Dict[str, Union[Callable, List[Callable]]] = None
                          ):
     """
 
     :param df:
-    :param history: In seconds
+    :param day_window: Enter the number of days
     :param aggregation_actions_per_user_per_day:
     :param aggregation_actions_total_history:
     :return:
@@ -121,7 +163,7 @@ def get_temporal_records(df: DataFrame,
             # Remove records in running list before time frame
             first_index_in_frame = 0
             for idx, running_row in enumerate(running_window):
-                if running_row['timestamp'] < row['timestamp'] - history:
+                if running_row['timestamp'] < start_of_day(row['timestamp'] - day_window * SECONDS_IN_DAY):
                     first_index_in_frame = idx
                 else:
                     # Since the list is sorted by time, if you reach an item in the
@@ -142,23 +184,33 @@ def get_temporal_records(df: DataFrame,
                     features = {key: [] for key in aggregation_actions_total_history.keys()}
                     for r in running_window:
                         if r['id'] == row['id'] and r['variable'] in aggregation_actions_total_history:
-                            features[r['variable']].append(r['value'])
+                            features[r['variable']].append(r)
 
                     features = dict(features)
                     keys = list(features.keys())
                     for variable_key in keys:
-                        variable_values = features[variable_key]
-                        del features[variable_key]
-
                         agg_func = aggregation_actions_total_history[variable_key]
-                        if callable(agg_func):
+                        if callable(agg_func) and getattr(agg_func, '__name__') == 'inner_keep_per_day':
+                            values_per_day = {to_date_string(r['time']): r['value'] for r in features[variable_key]}
+                            dict_per_day = agg_func(values_per_day=values_per_day,
+                                                    row=row,
+                                                    day_window=day_window,
+                                                    prefix=variable_key)
+                            features = {**features, **dict_per_day}
+                        elif callable(agg_func) and getattr(agg_func, '__name__') == '<lambda>':
+                            variable_values = [r['value'] for r in features[variable_key]]
+                            features[f"{variable_key}_custom"] = agg_func(variable_values, row)
+                        elif callable(agg_func):
                             name = getattr(agg_func, '__name__')
-                            features[f"{variable_key}_{name}"] = do_agg_func(agg_func, variable_values)
+                            variable_values = [r['value'] for r in features[variable_key]]
+                            features[f"{variable_key}_{name}"] = agg_func(variable_values)
                         elif type(agg_func) == list:
+                            variable_values = [r['value'] for r in features[variable_key]]
                             for func in agg_func:
                                 name = getattr(func, '__name__')
-                                features[f"{variable_key}_{name}"] = do_agg_func(func, variable_values)
+                                features[f"{variable_key}_{name}"] = func(variable_values)
 
+                        del features[variable_key]
                 records.append([
                     features,
                     row['value'],  # the target
@@ -167,6 +219,7 @@ def get_temporal_records(df: DataFrame,
 
         running_window.append(row)
     return records
+
 
 def fill_defaults(items: List, wanted_count: int, default_value):
     if len(items) < wanted_count:
