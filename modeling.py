@@ -31,8 +31,8 @@ save_file_path = os.path.join(OUTPUT_PATH, f'feature_tab_{N_DAY_WINDOW}.csv')
 
 if os.path.exists(save_file_path):
     df = pd.read_csv(save_file_path)
-    feature_labels = df.head()
-    feature_matrix = df.values.tolist()
+    feature_labels = df.columns.tolist()[:-2]
+    feature_matrix = np.array(df.values.tolist())
 else:
     data = read_data()
     records = get_temporal_records(data,
@@ -44,7 +44,7 @@ else:
                                     'call': sum,
                                    },
                                    {
-                                    'circumplex.arousal': lambda daily_mean, _: normalize(fill_defaults(daily_mean, N_DAY_WINDOW, DEFAULT_AROUSAL)),
+                                    'circumplex.arousal': lambda daily_mean, _: np.mean(fill_defaults(daily_mean, N_DAY_WINDOW, DEFAULT_AROUSAL)),
                                     'circumplex.valence': lambda daily_means, _: np.mean(fill_defaults(daily_means, N_DAY_WINDOW, DEFAULT_VALENCE)),
                                     'activity': mean,
                                     'call': lambda n_calls, _: np.mean(n_calls) / np.max(n_calls) if len(n_calls) > 0 else DEFAULT_CALL,
@@ -64,9 +64,17 @@ else:
 
 X = feature_matrix[:, :-2]  # The data for
 y = feature_matrix[:, -2]
-
 print("Example row:", X[0])
 print("Example target:", y[0])
+
+# TODO Normalization
+
+
+# TODO Feature selection: e.g. PCA
+
+
+# TODO split into train and validation set
+
 
 # Print correlation matrix
 corrMatrix = DataFrame(X, columns=feature_labels).apply(pd.to_numeric).corr(method='pearson')
@@ -74,6 +82,7 @@ sn.heatmap(corrMatrix, annot=True)
 plt.show()
 
 # A simple decision tree
-mdl = DecisionTreeClassifier(n_neighbors=10)
+print("Training model...")
+mdl = DecisionTreeClassifier()
 mdl = mdl.fit(X=X, y=y)
-print(mdl.score(X, y))
+print("Score:", mdl.score(X, y))
