@@ -1,7 +1,7 @@
 import pandas as pd
 from pandas import DataFrame
-from utils import get_temporal_records, read_data, VARIABLES_WITH_UNFIXED_RANGE, fill_defaults, keep_per_day, mean,\
-    check_existing_folder
+from utils import process_data, read_data, VARIABLES_WITH_UNFIXED_RANGE, fill_defaults, keep_per_day, mean, \
+    check_existing_folder, temporal_record_iterator
 import seaborn as sn
 import numpy as np
 import os
@@ -27,16 +27,21 @@ DEFAULT_AROUSAL = 0
 DEFAULT_VALENCE = 1
 DEFAULT_MOOD = 7.0
 
+MOOD_INDEX = -2
+ID_INDEX = -1
+N_NON_FEATURES = len([MOOD_INDEX, ID_INDEX])
+
 N_DAY_WINDOW = 3
-save_file_path = os.path.join(OUTPUT_PATH, f'feature_tab_{N_DAY_WINDOW}.csv')
+save_file_path = os.path.join(OUTPUT_PATH, f'feature_non_temporal_{N_DAY_WINDOW}.csv')
 
 if os.path.exists(save_file_path):
     df = pd.read_csv(save_file_path)
-    feature_labels = df.columns.tolist()[:-2]
+    feature_labels = df.columns.tolist()[:-N_NON_FEATURES]
     feature_matrix = np.array(df.values.tolist())
 else:
     data = read_data()
-    records = get_temporal_records(data,
+    records = process_data(
+                                   data,
                                    N_DAY_WINDOW,
                                    {'circumplex.arousal': mean,
                                     'circumplex.valence': mean,
@@ -63,8 +68,8 @@ else:
     df.to_csv(save_file_path, index=False)
 
 
-X = feature_matrix[:, :-2]  # The data for
-y = feature_matrix[:, -2]
+X = feature_matrix[:, :-N_NON_FEATURES]  # The data for
+y = feature_matrix[:, MOOD_INDEX]
 print("Example row:", X[0])
 print("Example target:", y[0])
 
@@ -83,16 +88,19 @@ X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2)
 
 
 # TODO training a non-temporal model
-# A simple decision tree
 print("Training model...")
 mdl = DecisionTreeRegressor()
 mdl = mdl.fit(X=X_train, y=y_train)
 plot_tree(mdl)
 print("Score:", mdl.predict(X_test), y_test)
 
-
-# TODO Giguru: Create temporal dataset
-
+# Create temporal dataset
+for input, target in temporal_record_iterator(feature_matrix,
+                                              mood_index=MOOD_INDEX,
+                                              id_index=ID_INDEX,
+                                              min_sequence_len=10):
+    # Do something input
+    pass
 
 # TODO Bram: train a temporal model, e.g. LSTM, RNN, etc.
 
