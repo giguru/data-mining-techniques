@@ -1,6 +1,7 @@
 import pandas as pd
 from pandas import DataFrame
-from utils import get_temporal_records, read_data, VARIABLES_WITH_UNFIXED_RANGE, fill_defaults, keep_per_day, mean, check_existing_folder
+from utils import get_temporal_records, read_data, VARIABLES_WITH_UNFIXED_RANGE, fill_defaults, keep_per_day, mean,\
+    check_existing_folder
 import seaborn as sn
 import numpy as np
 import os
@@ -9,6 +10,12 @@ from matplotlib.pyplot import figure
 from sklearn.tree import DecisionTreeClassifier
 from sklearn.neighbors import KNeighborsClassifier
 figure(figsize=(20, 20), dpi=80)
+
+
+def normalize(means):
+    computed_std = np.std(means)
+    std = computed_std if computed_std > 0 else 1
+    return np.mean(means) / std
 
 
 OUTPUT_PATH = './output/'
@@ -37,7 +44,7 @@ else:
                                     'call': sum,
                                    },
                                    {
-                                    'circumplex.arousal': lambda daily_mean, _: np.mean(fill_defaults(daily_mean, N_DAY_WINDOW, DEFAULT_AROUSAL)) / np.std(fill_defaults(daily_mean, N_DAY_WINDOW, DEFAULT_AROUSAL)),
+                                    'circumplex.arousal': lambda daily_mean, _: normalize(fill_defaults(daily_mean, N_DAY_WINDOW, DEFAULT_AROUSAL)),
                                     'circumplex.valence': lambda daily_means, _: np.mean(fill_defaults(daily_means, N_DAY_WINDOW, DEFAULT_VALENCE)),
                                     'activity': mean,
                                     'call': lambda n_calls, _: np.mean(n_calls) / np.max(n_calls) if len(n_calls) > 0 else DEFAULT_CALL,
