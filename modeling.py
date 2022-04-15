@@ -1,7 +1,7 @@
 import pandas as pd
 from pandas import DataFrame
-from utils import get_temporal_records, read_data, VARIABLES_WITH_UNFIXED_RANGE, fill_defaults, keep_per_day, mean,\
-    check_existing_folder
+from utils import process_data, read_data, VARIABLES_WITH_UNFIXED_RANGE, fill_defaults, keep_per_day, mean, \
+    check_existing_folder, temporal_input_generator
 import seaborn as sn
 import numpy as np
 import os
@@ -116,16 +116,21 @@ DEFAULT_AROUSAL = 0
 DEFAULT_VALENCE = 1
 DEFAULT_MOOD = 7.0
 
+MOOD_INDEX = -2
+ID_INDEX = -1
+N_NON_FEATURES = len([MOOD_INDEX, ID_INDEX])
+
 N_DAY_WINDOW = 3
-save_file_path = os.path.join(OUTPUT_PATH, f'feature_tab_{N_DAY_WINDOW}.csv')
+save_file_path = os.path.join(OUTPUT_PATH, f'feature_non_temporal_{N_DAY_WINDOW}.csv')
 
 if os.path.exists(save_file_path):
     df = pd.read_csv(save_file_path)
-    feature_labels = df.columns.tolist()[:-2]
+    feature_labels = df.columns.tolist()[:-N_NON_FEATURES]
     feature_matrix = np.array(df.values.tolist())
 else:
     data = read_data()
-    records = get_temporal_records(data,
+    records = process_data(
+                                   data,
                                    N_DAY_WINDOW,
                                    {'circumplex.arousal': mean,
                                     'circumplex.valence': mean,
@@ -151,13 +156,6 @@ else:
     check_existing_folder(OUTPUT_PATH)
     df.to_csv(save_file_path, index=False)
 
-
-feature_matrix = np.array([list(r[0].values()) + r[1:] for r in records])
-# X = feature_matrix[:, :-2]  # The data for
-# y = feature_matrix[:, -2]
-# print("Example row:", X[0])
-# print("Example target:", y[0])
-
 # TODO Vincenzo: Decide normalisation constants using training set only and split train/test
 X_train, y_train, \
 y_train_scaled, \
@@ -168,7 +166,15 @@ print("Example target:", y_train[0])
 
 # TODO Vincenzo: Feature selection using training set only: e.g. PCA
 attributes = pd.read_csv(os.path.join(OUTPUT_PATH, 'selected_attributes.csv'))
-attributes = list(attributes['selected_attributes'].values)
+n_cols = len(attributes.columns)
+this_attr = []
+for i in range(n_cols):
+    this_attr = this_attr + list(attributes[str(i)].dropna().values)
+this_attr = list(set(this_attr))
+
+feat_index = [idx for idx in range(len(feature_labels)) if feature_labels[idx] in this_attr]
+X_train = X_train[:, feat_index]
+X_test = X_test[:, feat_index]
 
 # Print correlation matrix
 # corrMatrix = DataFrame(X, columns=feature_labels).apply(pd.to_numeric).corr(method='pearson')
@@ -177,7 +183,6 @@ attributes = list(attributes['selected_attributes'].values)
 
 
 # TODO training a non-temporal model
-# A simple decision tree
 print("Training model...")
 mdl = DecisionTreeRegressor()
 mdl = mdl.fit(X=X_train, y=y_train)
@@ -185,10 +190,13 @@ plot_tree(mdl)
 print("Score:", mdl.predict(X_test), y_test)
 
 
-# TODO Giguru: Create temporal dataset
-# X_train_temporal, y_train_temporal, \
-# X_test_temporal, X_test_temporal = create_temporal_ds_for_LSTM(X_train, y_train, \
-#                                                                X_test, X_test)
+# Create temporal dataset
+for X_train_temporal, y_train_temporal in temporal_input_generator(feature_matrix,
+                                                                   mood_index=MOOD_INDEX,
+                                                                   id_index=ID_INDEX,
+                                                                   min_sequence_len=10):
+    # Do something input
+    pass
 
 # TODO Bram: train a temporal model, e.g. LSTM, RNN, etc.
 
