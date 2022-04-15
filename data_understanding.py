@@ -6,7 +6,7 @@ import numpy as np
 from pandas.api.types import is_datetime64_any_dtype as is_datetime
 import os
 
-OUTPUT_PATH = './output/'
+OUTPUT_PATH = './output'
 
 def check_existing_folder(this_path):
     MYDIR = (this_path)
@@ -31,6 +31,7 @@ def print_values_bar(variable_name: str, df: DataFrame):
     )
     plt.title(f"Values of '{variable_name}'")
     plt.show()
+    plt.savefig(os.path.join(OUTPUT_PATH, f'distr_{variable_name}.eps'))
 
 
 def print_values_hist(variable_name: str, df: DataFrame, bins: List):
@@ -43,6 +44,8 @@ def print_values_hist(variable_name: str, df: DataFrame, bins: List):
     plt.hist(x=subset['value'].to_list(), bins=bins)
     plt.title(f"Values of '{variable_name}'")
     plt.show()
+    plt.savefig(os.path.join(OUTPUT_PATH, f'distr_{variable_name}.eps'))
+
 
 
 def plot_temporal_effects(df: DataFrame, time_window: str, variable_name: str, **kwargs):
