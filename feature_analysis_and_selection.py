@@ -166,7 +166,7 @@ def main():
 
     #############################
     #PCA
-    ds = data.iloc[:, 4:].copy()
+    ds = data.drop(columns=cols_2_drop).copy()
     pca_features = ds.columns
     mat = ds.cov()
     l, w = np.linalg.eig(mat.values)
