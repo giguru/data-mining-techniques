@@ -7,7 +7,8 @@ import numpy as np
 import os
 from matplotlib import pyplot as plt
 from matplotlib.pyplot import figure
-from sklearn.tree import DecisionTreeClassifier
+from sklearn.model_selection import train_test_split
+from sklearn.tree import DecisionTreeRegressor, plot_tree
 from sklearn.neighbors import KNeighborsClassifier
 figure(figsize=(20, 20), dpi=80)
 
@@ -67,22 +68,37 @@ y = feature_matrix[:, -2]
 print("Example row:", X[0])
 print("Example target:", y[0])
 
-# TODO Normalization
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2)
+
+# TODO Vincenzo: Decide normalisation constants using training set only
 
 
-# TODO Feature selection: e.g. PCA
-
-
-# TODO split into train and validation set
+# TODO Vincenzo: Feature selection using training set only: e.g. PCA
 
 
 # Print correlation matrix
-corrMatrix = DataFrame(X, columns=feature_labels).apply(pd.to_numeric).corr(method='pearson')
-sn.heatmap(corrMatrix, annot=True)
-plt.show()
+# corrMatrix = DataFrame(X, columns=feature_labels).apply(pd.to_numeric).corr(method='pearson')
+# sn.heatmap(corrMatrix, annot=True)
+# plt.show()
 
+
+# TODO training a non-temporal model
 # A simple decision tree
 print("Training model...")
-mdl = DecisionTreeClassifier()
-mdl = mdl.fit(X=X, y=y)
-print("Score:", mdl.score(X, y))
+mdl = DecisionTreeRegressor()
+mdl = mdl.fit(X=X_train, y=y_train)
+plot_tree(mdl)
+print("Score:", mdl.predict(X_test), y_test)
+
+
+# TODO Giguru: Create temporal dataset
+
+
+# TODO Bram: train a temporal model, e.g. LSTM, RNN, etc.
+
+
+# TODO Giguru: compute two base lines. Simply take the mood the day before and take the average mood.
+
+
+# TODO Evaluation: confusion matrix, mean squared error, qualitative prediction power per user.
+
