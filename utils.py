@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-
+import os
 import pandas as pd
 import numpy as np
 from pandas import DataFrame, Series
@@ -11,7 +11,7 @@ import math
 
 __all__ = [
     'SECONDS_IN_DAY', 'VARIABLES_WITH_UNFIXED_RANGE', 'read_data', 'get_temporal_records',
-    'get_subset_by_variable', 'fill_defaults', 'keep_per_day', 'mean'
+    'get_subset_by_variable', 'fill_defaults', 'keep_per_day', 'mean', 'check_existing_folder'
 ]
 
 DATE_FORMAT = '%Y-%m-%d'
@@ -226,3 +226,13 @@ def fill_defaults(items: List, wanted_count: int, default_value):
         return items + [default_value] * (wanted_count - len(items))
     else:
         return items
+
+
+def check_existing_folder(this_path):
+    my_dir = this_path
+    check_folder = os.path.isdir(my_dir)
+
+    # If folder doesn't exist, then create it.
+    if not check_folder:
+        os.makedirs(my_dir)
+        print("created folder : ", my_dir)
