@@ -13,7 +13,7 @@ import math
 __all__ = [
     'SECONDS_IN_DAY', 'VARIABLES_WITH_UNFIXED_RANGE', 'read_data', 'process_data',
     'get_subset_by_variable', 'fill_defaults', 'keep_per_day', 'mean', 'check_existing_folder',
-    'temporal_record_iterator'
+    'temporal_input_generator'
 ]
 
 DATE_FORMAT = '%Y-%m-%d'
@@ -240,7 +240,7 @@ def check_existing_folder(this_path):
         print("created folder : ", my_dir)
 
 
-def temporal_record_iterator(feature_matrix: np.ndarray,
+def temporal_input_generator(feature_matrix: np.ndarray,
                              mood_index: int,
                              id_index: int,
                              min_sequence_len: int,

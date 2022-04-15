@@ -1,7 +1,7 @@
 import pandas as pd
 from pandas import DataFrame
 from utils import process_data, read_data, VARIABLES_WITH_UNFIXED_RANGE, fill_defaults, keep_per_day, mean, \
-    check_existing_folder, temporal_record_iterator
+    check_existing_folder, temporal_input_generator
 import seaborn as sn
 import numpy as np
 import os
@@ -95,7 +95,7 @@ plot_tree(mdl)
 print("Score:", mdl.predict(X_test), y_test)
 
 # Create temporal dataset
-for input, target in temporal_record_iterator(feature_matrix,
+for input, target in temporal_input_generator(feature_matrix,
                                               mood_index=MOOD_INDEX,
                                               id_index=ID_INDEX,
                                               min_sequence_len=10):
