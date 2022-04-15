@@ -8,12 +8,13 @@ from typing import List, Dict, Callable, Union, Any
 from tqdm import tqdm
 from datetime import datetime
 import math
+from sklearn.model_selection import train_test_split
 
 
 __all__ = [
     'SECONDS_IN_DAY', 'VARIABLES_WITH_UNFIXED_RANGE', 'read_data', 'process_data',
     'get_subset_by_variable', 'fill_defaults', 'keep_per_day', 'mean', 'check_existing_folder',
-    'temporal_input_generator'
+    'create_temporal_input'
 ]
 
 DATE_FORMAT = '%Y-%m-%d'
@@ -89,21 +90,23 @@ def mean(values_list):
 
 def aggregate_actions_per_user_per_day(df: DataFrame, variable_key, agg_func):
     df_only_variable = df[df['variable'] == variable_key]
-    df_aggregate_variable_per_date_and_user = df_only_variable.groupby(
-        [df_only_variable['time'].dt.date, df_only_variable['id']]
-    ).agg({
-        'value': agg_func,
-        'timestamp': 'max',
-        'time': 'max',
-        'id': 'first',  # Retain the value
-        'variable': 'first',  # Retain the value
-        'week_day': 'first'  # Retain the value
-    })
-
-    # Data without the variable column
     df_without_variable = df[df['variable'] != variable_key]
-    df = pd.concat([df_aggregate_variable_per_date_and_user, df_without_variable])
-    return df, df_aggregate_variable_per_date_and_user
+
+    func_list = agg_func if type(agg_func) == list else [agg_func]
+
+    for func in func_list:
+        df_aggregate_variable_per_date_and_user = df_only_variable.groupby(
+            [df_only_variable['time'].dt.date, df_only_variable['id']]
+        ).agg({
+            'value': func,
+            'timestamp': 'max',
+            'time': 'max',
+            'id': 'first',  # Retain the value
+            'variable': 'first',  # Retain the value
+            'week_day': 'first'  # Retain the value
+        })
+        df = pd.concat([df_aggregate_variable_per_date_and_user, df_without_variable])
+    return df
 
 
 def keep_per_day(default: float):
@@ -146,12 +149,9 @@ def process_data(df: DataFrame,
     if aggregation_actions_per_user_per_day is None:
         aggregation_actions_per_user_per_day = {}
 
-    # The mean must be always average per day
-    aggregation_actions_per_user_per_day['mood'] = 'mean'
-
     # some variable keys you would like to have average per day
     for variable_key, agg_func in aggregation_actions_per_user_per_day.items():
-        df, _ = aggregate_actions_per_user_per_day(df, variable_key, agg_func)
+        df = aggregate_actions_per_user_per_day(df, variable_key, agg_func)
 
     # Now create one data frame with the mean mood data and the non-mood data
     sorted_df = df.sort_values(by=['timestamp'])
@@ -181,7 +181,7 @@ def process_data(df: DataFrame,
                 if aggregation_actions_total_history is None:
                     # Only append data of the user, but remove the ID.
                     # The ID is irrelevant for every machine learning model.
-                    features = [r.drop('id') for r in running_window if r['id'] == row['id']]
+                    features = [r.drop('id').to_dict() for r in running_window if r['id'] == row['id']]
                 else:
                     features = {key: [] for key in aggregation_actions_total_history.keys()}
                     for r in running_window:
@@ -215,8 +215,9 @@ def process_data(df: DataFrame,
                         del features[variable_key]
                 records.append([
                     features,
+                    to_date_string(row['time']),
                     row['value'],  # the target
-                    row['id']
+                    row['id'],
                 ])
 
         running_window.append(row)
@@ -240,11 +241,12 @@ def check_existing_folder(this_path):
         print("created folder : ", my_dir)
 
 
-def temporal_input_generator(feature_matrix: np.ndarray,
-                             mood_index: int,
-                             id_index: int,
-                             min_sequence_len: int,
-                             max_sequence_len: int = 1000):
+def create_temporal_input(feature_matrix: np.ndarray,
+                          mood_index: int,
+                          id_index: int,
+                          min_sequence_len: int,
+                          max_sequence_len: int = 1000,
+                          test_size: float = 0.2):
     """
     This method assumes the records are ordered by ascending date.
     """
@@ -254,14 +256,27 @@ def temporal_input_generator(feature_matrix: np.ndarray,
         user_id = record[id_index]
         per_user[user_id].append(idx)
 
+    total_x_train, total_y_train, total_x_test, total_y_test = [], [], [], []
+
     for user_id, user_records in per_user.items():
         user_records = np.array(user_records)
+        user_inputs, user_targets = [], []
 
         for current_index in range(min_sequence_len, len(user_records)):
             start_input_index = max(0, current_index - max_sequence_len)
             last_input_index = current_index-1
             wanted_feature_records_indices = user_records[start_input_index:last_input_index]
+
             input_records = [list(feature_matrix[idx][:-3]) for idx in wanted_feature_records_indices]
             target = feature_matrix[current_index][mood_index]
-            yield input_records, target
 
+            user_inputs.append(input_records)
+            user_targets.append(target)
+
+        user_x_train, user_y_train, user_x_test, user_y_test = train_test_split(user_inputs, user_targets, test_size=test_size)
+        total_x_train += user_x_train
+        total_y_train += user_y_train
+        total_x_test += user_x_test
+        total_y_test += user_y_test
+
+    return total_x_train, total_y_train, total_x_test, total_y_test
