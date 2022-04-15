@@ -95,10 +95,10 @@ plot_tree(mdl)
 print("Score:", mdl.predict(X_test), y_test)
 
 # Create temporal dataset
-for input, target in temporal_input_generator(feature_matrix,
-                                              mood_index=MOOD_INDEX,
-                                              id_index=ID_INDEX,
-                                              min_sequence_len=10):
+for X_train_temporal, y_train_temporal in temporal_input_generator(feature_matrix,
+                                                                   mood_index=MOOD_INDEX,
+                                                                   id_index=ID_INDEX,
+                                                                   min_sequence_len=10):
     # Do something input
     pass
 

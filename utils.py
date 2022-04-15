@@ -246,7 +246,7 @@ def temporal_input_generator(feature_matrix: np.ndarray,
                              min_sequence_len: int,
                              max_sequence_len: int = 1000):
     """
-    This method assumes the records are in ascending date
+    This method assumes the records are ordered by ascending date.
     """
     per_user = defaultdict(list)  # type: Dict[str, List[int]]
 
