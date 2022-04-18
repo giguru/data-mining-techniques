@@ -1,6 +1,6 @@
 import pandas as pd
 from utils import process_data, read_data, VARIABLES_WITH_UNFIXED_RANGE, mean, \
-    check_existing_folder, create_temporal_input, fill_defaults, keep_per_day
+    check_existing_folder, create_temporal_input, fill_defaults, keep_per_day, aggregate_by_day
 import numpy as np
 import os
 from matplotlib.pyplot import figure
@@ -26,36 +26,38 @@ ID_INDEX = -1
 DATE_INDEX = -3
 N_NON_FEATURES = len([MOOD_INDEX, ID_INDEX, DATE_INDEX])
 
-N_DAY_WINDOW = 1
-save_file_path = os.path.join(OUTPUT_PATH, f'feature_temporal_{N_DAY_WINDOW}.csv')
+N_DAY_WINDOW = 3
 
-if os.path.exists(save_file_path):
-    df = pd.read_csv(save_file_path)
-    feature_labels = df.columns.tolist()[:-N_NON_FEATURES]
-    feature_matrix = np.array(df.values.tolist())
-else:
-    data = read_data()
-    aggregation_actions_per_user_per_day = {
-        'mood': 'mean',  # The mean must be always average per day
-        'circumplex.arousal': mean,
-        'circumplex.valence': mean,
-        'activity': sum,
-        'sms': sum,
-        'call': sum,
-        **({key: [mean, sum, len] for key in VARIABLES_WITH_UNFIXED_RANGE})
-    }
-    records = process_data(data,
-                           N_DAY_WINDOW,
-                           aggregation_actions_per_user_per_day=aggregation_actions_per_user_per_day,
-                           aggregation_actions_total_history=None)
-    print("example records", records[0])
-    feature_matrix = np.array([list(r[0].values()) + r[1:] for r in records])
+data = read_data()
+aggregation_actions_per_user_per_day = {
+    'mood': 'mean',  # The mean must be always average per day
+    'circumplex.arousal': mean,
+    'circumplex.valence': mean,
+    'activity': sum,
+    'sms': sum,
+    'call': sum,
+    **({key: [mean, sum, len] for key in VARIABLES_WITH_UNFIXED_RANGE})
+}
+records = process_data(data,
+                       N_DAY_WINDOW,
+                       aggregation_actions_per_user_per_day=aggregation_actions_per_user_per_day,
+                       aggregation_actions_total_history=None,
+                       rename_variable_per_day=True)
 
-    # Save data frame
-    feature_labels = list(aggregation_actions_per_user_per_day.keys())
-    df = pd.DataFrame(feature_matrix, columns=feature_labels + ['date', 'mood', 'id'])
-    check_existing_folder(OUTPUT_PATH)
-    df.to_csv(save_file_path, index=False)
+print("example records", records[0])
+for i in range(len(records)):
+    records[i][0] = aggregate_by_day(records[i][0],
+                                     records[i][DATE_INDEX],
+                                     N_DAY_WINDOW,
+                                     defaults={
+                                          'circumplex.arousal': DEFAULT_AROUSAL,
+                                          'circumplex.valence': DEFAULT_VALENCE,
+                                          'activity': 0,
+                                          'call': DEFAULT_CALL,
+                                          'sms': DEFAULT_SMS,
+                                          'mood': DEFAULT_MOOD,
+                                          **({key: 0 for key in VARIABLES_WITH_UNFIXED_RANGE})
+                                     })
 
 
 # TODO Vincenzo: Decide normalisation constants using training set only
@@ -64,7 +66,7 @@ else:
 # TODO Vincenzo: Feature selection using training set only: e.g. PCA
 
 # Create temporal dataset
-X_train, y_train, X_test, y_test = create_temporal_input(feature_matrix,
+X_train, y_train, X_test, y_test = create_temporal_input(records,
                                                          mood_index=MOOD_INDEX,
                                                          id_index=ID_INDEX,
                                                          min_sequence_len=10)

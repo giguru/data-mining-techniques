@@ -14,7 +14,7 @@ from sklearn.model_selection import train_test_split
 __all__ = [
     'SECONDS_IN_DAY', 'VARIABLES_WITH_UNFIXED_RANGE', 'read_data', 'process_data',
     'get_subset_by_variable', 'fill_defaults', 'keep_per_day', 'mean', 'check_existing_folder',
-    'create_temporal_input'
+    'create_temporal_input', 'aggregate_by_day'
 ]
 
 DATE_FORMAT = '%Y-%m-%d'
@@ -88,7 +88,11 @@ def mean(values_list):
     return np.mean(values_list) if len(values_list) > 0 else 0
 
 
-def aggregate_actions_per_user_per_day(df: DataFrame, variable_key, agg_func):
+def build_extended_key(variable_key: str, agg_func):
+    name = getattr(agg_func, '__name__') if callable(agg_func) else agg_func  # Assume it's a string otherwise1q1q
+    return f"{variable_key}_{name}"
+
+def aggregate_actions_per_user_per_day(df: DataFrame, variable_key, agg_func, rename_variable:bool=False):
     df_only_variable = df[df['variable'] == variable_key]
     df_without_variable = df[df['variable'] != variable_key]
 
@@ -105,6 +109,13 @@ def aggregate_actions_per_user_per_day(df: DataFrame, variable_key, agg_func):
             'variable': 'first',  # Retain the value
             'week_day': 'first'  # Retain the value
         })
+
+        if rename_variable:
+            df_aggregate_variable_per_date_and_user.replace(
+                # Replace e.g. 'mean' with 'mean_mood'
+                to_replace={variable_key: build_extended_key(variable_key, func)},
+                inplace=True
+            )
         df = pd.concat([df_aggregate_variable_per_date_and_user, df_without_variable])
     return df
 
@@ -129,14 +140,15 @@ def start_of_day(timestamp: int):
     return datetime.timestamp(dt_object)
 
 
-def to_date_string(date_object: np.datetime64):
+def to_date_string(date_object: datetime):
     return date_object.strftime(DATE_FORMAT)
 
 
 def process_data(df: DataFrame,
                  day_window: int,
                  aggregation_actions_per_user_per_day: Dict[str, str] = None,
-                 aggregation_actions_total_history: Dict[str, Union[Callable, List[Callable]]] = None
+                 aggregation_actions_total_history: Dict[str, Union[Callable, List[Callable]]] = None,
+                 rename_variable_per_day: bool = False
                  ):
     """
 
@@ -151,17 +163,17 @@ def process_data(df: DataFrame,
 
     # some variable keys you would like to have average per day
     for variable_key, agg_func in aggregation_actions_per_user_per_day.items():
-        df = aggregate_actions_per_user_per_day(df, variable_key, agg_func)
+        df = aggregate_actions_per_user_per_day(df, variable_key, agg_func, rename_variable=rename_variable_per_day)
 
     # Now create one data frame with the mean mood data and the non-mood data
-    sorted_df = df.sort_values(by=['timestamp'])
+    df.sort_values(by=['timestamp'], inplace=True)
 
     records = []  # type: List[List[Dict, float, str]]
     running_window = []  # type: List[pd.Series]
 
-    for index, row in tqdm(sorted_df.iterrows(), total=len(sorted_df), desc="Formatting records"):
-        # Build a features-target combination
-        if row['variable'] == 'mood':
+    for index, row in tqdm(df.iterrows(), total=len(df), desc="Formatting records"):
+        # Build a features-target combination for each mood. The mean variable may have been rewritten in e.g. mood_mean
+        if row['variable'] == 'mood' or 'mood' in row['variable']:
             # Remove records in running list before time frame
             first_index_in_frame = 0
             for idx, running_row in enumerate(running_window):
@@ -203,14 +215,14 @@ def process_data(df: DataFrame,
                             variable_values = [r['value'] for r in features[variable_key]]
                             features[f"{variable_key}_custom"] = agg_func(variable_values, row)
                         elif callable(agg_func):
-                            name = getattr(agg_func, '__name__')
+                            extended_key = build_extended_key(variable_key, agg_func)
                             variable_values = [r['value'] for r in features[variable_key]]
-                            features[f"{variable_key}_{name}"] = agg_func(variable_values)
+                            features[extended_key] = agg_func(variable_values)
                         elif type(agg_func) == list:
                             variable_values = [r['value'] for r in features[variable_key]]
                             for func in agg_func:
-                                name = getattr(func, '__name__')
-                                features[f"{variable_key}_{name}"] = func(variable_values)
+                                extended_key = build_extended_key(variable_key, agg_func)
+                                features[extended_key] = func(variable_values)
 
                         del features[variable_key]
                 records.append([
@@ -222,6 +234,34 @@ def process_data(df: DataFrame,
 
         running_window.append(row)
     return records
+
+
+def to_timestamp(date_string: str):
+    element = datetime.strptime(date_string, DATE_FORMAT)
+    timestamp = datetime.timestamp(element)
+    return timestamp
+
+
+def aggregate_by_day(records: List[Dict[str, Any]], target_date: str, day_window: int, defaults: dict):
+    values_index = defaultdict(lambda : defaultdict(list))
+    for r in records:
+        values_index[to_date_string(r['time'])][r['variable']].append(r['value'])
+    values_index = dict(values_index)
+    records_per_day = []
+    for days_go in range(day_window, 0, -1):
+        new_record = {}
+
+        for variable_key, agg_func in defaults.items():
+            target_timestamp = to_timestamp(target_date)
+            date = to_date_string(datetime.fromtimestamp(target_timestamp - days_go * SECONDS_IN_DAY))
+            if date in values_index and variable_key in values_index[date]:
+                new_record[variable_key] = values_index[date][variable_key]
+            else:
+                new_record[variable_key] = defaults[variable_key]
+
+        records_per_day.append(new_record)
+
+    return records_per_day
 
 
 def fill_defaults(items: List, wanted_count: int, default_value):
