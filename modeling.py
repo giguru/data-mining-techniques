@@ -129,25 +129,24 @@ if os.path.exists(save_file_path):
     feature_matrix = np.array(df.values.tolist())
 else:
     data = read_data()
-    records = process_data(
-                                   data,
-                                   N_DAY_WINDOW,
-                                   {'circumplex.arousal': mean,
-                                    'circumplex.valence': mean,
-                                    'activity': sum,
-                                    'sms': sum,
-                                    'call': sum,
-                                   },
-                                   {
-                                    'circumplex.arousal': lambda daily_mean, _: np.mean(fill_defaults(daily_mean, N_DAY_WINDOW, DEFAULT_AROUSAL)),
-                                    'circumplex.valence': lambda daily_means, _: np.mean(fill_defaults(daily_means, N_DAY_WINDOW, DEFAULT_VALENCE)),
-                                    'activity': mean,
-                                    'call': lambda n_calls, _: np.mean(n_calls) / np.max(n_calls) if len(n_calls) > 0 else DEFAULT_CALL,
-                                    'sms': lambda n_sms, _: np.mean(n_sms) / np.max(n_sms) if len(n_sms) > 0 else DEFAULT_SMS,
-                                    'week_day': lambda _, row: row['week_day'] % 7 - 3,
-                                    'mood': keep_per_day(default=DEFAULT_MOOD),
-                                    **({ key: [mean, sum, len] for key in VARIABLES_WITH_UNFIXED_RANGE })
-                                    })
+    records = process_data(data,
+                           N_DAY_WINDOW,
+                           {'circumplex.arousal': mean,
+                            'circumplex.valence': mean,
+                            'activity': sum,
+                            'sms': sum,
+                            'call': sum,
+                           },
+                           {
+                            'circumplex.arousal': lambda daily_mean, _: np.mean(fill_defaults(daily_mean, N_DAY_WINDOW, DEFAULT_AROUSAL)),
+                            'circumplex.valence': lambda daily_means, _: np.mean(fill_defaults(daily_means, N_DAY_WINDOW, DEFAULT_VALENCE)),
+                            'activity': mean,
+                            'call': lambda n_calls, _: np.mean(n_calls) / np.max(n_calls) if len(n_calls) > 0 else DEFAULT_CALL,
+                            'sms': lambda n_sms, _: np.mean(n_sms) / np.max(n_sms) if len(n_sms) > 0 else DEFAULT_SMS,
+                            'week_day': lambda _, row: row['week_day'] % 7 - 3,
+                            'mood': keep_per_day(default=DEFAULT_MOOD),
+                            **({ key: [mean, sum, len] for key in VARIABLES_WITH_UNFIXED_RANGE })
+                            })
 
     feature_matrix = np.array([list(r[0].values()) + r[1:] for r in records])
     # Save data frame
