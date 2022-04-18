@@ -6,8 +6,10 @@ import seaborn as sns
 import statsmodels.api as sm
 from sklearn.model_selection import train_test_split
 import os
+from matplotlib.pyplot import figure
 
-OUTPUT_PATH = './output/'
+OUTPUT_PATH = './output'
+figure(figsize=(20, 20), dpi=80)
 
 def check_existing_folder(this_path):
     MYDIR = (this_path)
@@ -17,6 +19,33 @@ def check_existing_folder(this_path):
     if not CHECK_FOLDER:
         os.makedirs(MYDIR)
         print("created folder : ", MYDIR)
+
+def plot_pca(ds, w, idx_thr):
+    """
+
+    :param ds: DataFrame with  features you have computed PCA
+    :param w: weights of PCA
+    :param idx_thr: n of PCA components to be plotted
+    :return:
+    """
+    # plot weights of first x PCA components
+    idx_thr_plot = 5
+    barWidth = 0.15
+    br0 = np.arange(len(w[0]))
+
+    plt.figure()
+    for i in range(idx_thr_plot):
+        this_br = [x + i*barWidth for x in br0]
+        plt.bar(this_br, w[i]/np.sqrt(sum(w[i]**2)), width=barWidth, label=f'PCA_{i+1}')
+
+    plt.xticks([r+idx_thr_plot/2 * barWidth for r in br0],
+               ds.columns.values, rotation=90)
+    plt.legend(loc='best')
+    plt.xlabel('Features')
+    plt.ylabel('PCA weights')
+    plt.title(f'First {idx_thr} PCA weights')
+    plt.xticks(rotation=90)
+    plt.savefig(os.path.join(OUTPUT_PATH, 'PCA_weights.eps'), bbox_inches="tight")
 
 
 
@@ -30,7 +59,7 @@ def check_perf(model, y, X, included, new_column):
 
 def stepwise_selection(X, y,
                        initial_list=[],
-                       test_size=0.33,
+                       test_size=0.2,
                        test_sample='os',
                        verbose=True):
     """ Perform a forward-backward feature selection
@@ -44,6 +73,7 @@ def stepwise_selection(X, y,
         verbose - whether to print the sequence of inclusions and exclusions
     Returns: list of selected features
     See https://en.wikipedia.org/wiki/Stepwise_regression for the details
+    Logit ln(p/1-p) = beta_0 + beta_1 x_1 + ...
     """
     included = list(initial_list)
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=test_size)
@@ -100,9 +130,10 @@ def stepwise_selection(X, y,
 
 def main():
     input_path = 'output'
-    fpath = 'feature_tab_1.csv'
+    fpath = 'scaled_dataset.csv'
     check_existing_folder(OUTPUT_PATH)
-
+    test_size = 0.2
+    N_DAY_WINDOW = 3
     data = pd.read_csv(os.path.join(input_path, fpath))
 
     def skipna_std(df):
@@ -116,22 +147,50 @@ def main():
     # plt.xlabel('Patient')
     # correlation = data.corr()
 
-    # 1. Data needs to be normalized
+    # 1. select_is
+    data = data.loc[data.rand > test_size] # this is is data from is/os split for normalization
+    mood_cols = [f'mood_{1+x}_day_before' for x in range(N_DAY_WINDOW)]
+    mood_cols_scaled = [f'mood_{1+x}_day_before_scaled' for x in range(N_DAY_WINDOW)]
 
-    # 2. imputation (need time stamps)
-    y = data['mood'].values
-    data_filled = data.fillna(value=0)
 
     # 3. stepwise regression
-    X = data_filled.drop(columns=['id', 'mood'])
-    result = stepwise_selection(X, y)
+    y = data['mood'].values
+    cols_2_drop = ['id', 'mood', 'mood_scaled', 'mood_before_mean', 'rand'] + mood_cols_scaled
+    X = data.drop(columns=cols_2_drop)
+    result = stepwise_selection(X, y, test_size=0.33)
+    result = sorted(result)
     print('resulting features:')
     print(result)
+    df_attributes = pd.DataFrame({'selected_attributes': result})
+    # df_attributes.to_csv(os.path.join(OUTPUT_PATH, 'selected_attributes.csv'), index=False)
 
-    # 4. plot correlation - full attributes
+    #############################
+    #PCA
+    ds = data.drop(columns=cols_2_drop).copy()
+    pca_features = ds.columns
+    mat = ds.cov()
+    l, w = np.linalg.eig(mat.values)
+    #select eig that explain
+    weights = l.cumsum()/l.sum()
+    plt.plot(range(1, len(l)+1), weights)
+    THR = 0.9
+    idx_thr = np.where(weights<=THR)[0][-1]
+
+    plot_pca(ds, w, idx_thr)
+
+    feat_list = []
+    for i in range(idx_thr):
+        idx = np.where(w[i]>0.3)
+        feat_list = feat_list + pca_features[idx].to_list()
+    feat_list = list(set(feat_list))
+    not_in_feat_selected = [idx for idx in feat_list if idx not in result]
+    df_attributes = pd.concat([df_attributes, pd.DataFrame({'PCA': not_in_feat_selected})], ignore_index=True, axis=1)
+    df_attributes.to_csv(os.path.join(OUTPUT_PATH, 'selected_attributes.csv'), index=False)
+
+
+    # 5. plot correlation - full attributes
     # sort columns
     sorted_cols = ['mood'] + result + [idx for idx in data.columns if idx not in ['mood'] + result + ['id']]
-
 
     corr = data.loc[:, sorted_cols].corr()
     swarm_plot = sns.heatmap(corr,
@@ -141,7 +200,7 @@ def main():
     fig.savefig(os.path.join(OUTPUT_PATH, 'correlation_full.eps'), bbox_inches="tight")
     plt.close(fig)
 
-    # 5. plot correlation of selected features
+    # 6. plot correlation of selected features
     selected = ['mood'] + result
     corr = data.loc[:, selected].corr()
     this_plot = sns.heatmap(corr,
@@ -150,31 +209,7 @@ def main():
     fig = this_plot.get_figure()
     fig.savefig(os.path.join(OUTPUT_PATH, 'correlation_restr.eps'), bbox_inches="tight")
     plt.close(fig)
-    #PCA
-    mat = data.iloc[:, :-2].cov()
-    l, w = np.linalg.eig(mat.values)
-    #select eig that explain
-    weights = l.cumsum()/l.sum()
-    plt.plot(range(1, len(l)+1), weights)
-    THR = 0.95
-    idx_thr = np.where(weights<=THR)[0][-1]
 
-    # plot weights of first x PCA components
-    barWidth = 0.15
-    br0 = np.arange(len(w[0]))
-
-    plt.figure()
-    for i in range(idx_thr):
-        this_br = [x + i*barWidth for x in br0]
-        plt.bar(this_br, w[i]/np.sqrt(sum(w[i]**2)), width=barWidth, label=f'PCA_{i+1}')
-
-    plt.xticks([r+idx_thr/2 * barWidth for r in br0],
-               data.iloc[:, :-2].columns.values, rotation=90)
-    plt.legend(loc='best')
-    plt.xlabel('Features')
-    plt.ylabel('PCA weights')
-    plt.title(f'First {idx_thr} PCA weights')
-    plt.savefig(os.path.join(OUTPUT_PATH, 'PCA_weights.eps'), bbox_inches="tight")
 
 
 if __name__ == '__main__':

@@ -35,7 +35,9 @@ VARIABLES_WITH_UNFIXED_RANGE = [
     'appCat.travel',
     'appCat.unknown',
     'appCat.utilities',
-    'appCat.weather'
+    'appCat.weather',
+    'amount_screen',
+    'screenrest'
 ]
 
 
