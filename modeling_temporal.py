@@ -1,6 +1,7 @@
 import pandas as pd
-from utils import process_data, read_data, VARIABLES_WITH_UNFIXED_RANGE, mean, \
-    check_existing_folder, create_temporal_input, fill_defaults, keep_per_day, aggregate_by_day
+from utils import read_data, VARIABLES_WITH_UNFIXED_RANGE, mean, \
+    create_temporal_input, \
+    aggregate_actions_per_user_per_day, dataframe_to_dict_per_day
 import numpy as np
 import os
 from matplotlib.pyplot import figure
@@ -26,7 +27,7 @@ ID_INDEX = -1
 DATE_INDEX = -3
 N_NON_FEATURES = len([MOOD_INDEX, ID_INDEX, DATE_INDEX])
 
-N_DAY_WINDOW = 3
+N_DAY_WINDOW = 1
 
 data = read_data()
 aggregation_actions_per_user_per_day = {
@@ -38,27 +39,24 @@ aggregation_actions_per_user_per_day = {
     'call': sum,
     **({key: [mean, sum, len] for key in VARIABLES_WITH_UNFIXED_RANGE})
 }
-records = process_data(data,
-                       N_DAY_WINDOW,
-                       aggregation_actions_per_user_per_day=aggregation_actions_per_user_per_day,
-                       aggregation_actions_total_history=None,
-                       rename_variable_per_day=True)
 
-print("example records", records[0])
-for i in range(len(records)):
-    records[i][0] = aggregate_by_day(records[i][0],
-                                     records[i][DATE_INDEX],
-                                     N_DAY_WINDOW,
-                                     defaults={
-                                          'circumplex.arousal': DEFAULT_AROUSAL,
-                                          'circumplex.valence': DEFAULT_VALENCE,
-                                          'activity': 0,
-                                          'call': DEFAULT_CALL,
-                                          'sms': DEFAULT_SMS,
-                                          'mood': DEFAULT_MOOD,
-                                          **({key: 0 for key in VARIABLES_WITH_UNFIXED_RANGE})
-                                     })
+for variable_key, agg_func in aggregation_actions_per_user_per_day.items():
+    data = aggregate_actions_per_user_per_day(data, variable_key, agg_func, rename_variable=True)
 
+data.sort_values(by=['timestamp'], inplace=True)
+
+records = dataframe_to_dict_per_day(data,
+                                    default_callables={
+                                        'mood_mean': lambda current, prev: current or prev or DEFAULT_MOOD,
+                                        'circumplex.arousal_mean': lambda current, prev: current or DEFAULT_AROUSAL,
+                                        'circumplex.valence_mean': lambda current, prev: current or DEFAULT_VALENCE,
+                                        'activity_sum': lambda current, prev: current or 0,
+                                        'call_sum': lambda current, prev: current or DEFAULT_CALL,
+                                        'sms_sum': lambda current, prev: current or DEFAULT_SMS,
+                                        **({f"{key}_mean": lambda current, prev: current or 0 for key in VARIABLES_WITH_UNFIXED_RANGE}),
+                                        **({f"{key}_sum": lambda current, prev: current or 0 for key in VARIABLES_WITH_UNFIXED_RANGE}),
+                                        **({f"{key}_len": lambda current, prev: current or 0 for key in VARIABLES_WITH_UNFIXED_RANGE})
+                                    })
 
 # TODO Vincenzo: Decide normalisation constants using training set only
 
@@ -66,10 +64,7 @@ for i in range(len(records)):
 # TODO Vincenzo: Feature selection using training set only: e.g. PCA
 
 # Create temporal dataset
-X_train, y_train, X_test, y_test = create_temporal_input(records,
-                                                         mood_index=MOOD_INDEX,
-                                                         id_index=ID_INDEX,
-                                                         min_sequence_len=10)
+X_train, y_train, X_test, y_test = create_temporal_input(records, min_sequence_len=10)
 
 
 # TODO Bram: train a temporal model, e.g. LSTM, RNN, etc.
