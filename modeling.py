@@ -10,6 +10,11 @@ from matplotlib.pyplot import figure
 from sklearn.model_selection import train_test_split
 from sklearn.tree import DecisionTreeRegressor, plot_tree
 from sklearn.neighbors import KNeighborsClassifier
+import torch
+import torch.nn as nn
+import os
+from torch.autograd import Variable
+os.chdir(r"C:\Users\Bram\data-mining-techniques")
 figure(figsize=(20, 20), dpi=80)
 
 
@@ -88,23 +93,92 @@ X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2)
 
 
 # TODO training a non-temporal model
-print("Training model...")
-mdl = DecisionTreeRegressor()
-mdl = mdl.fit(X=X_train, y=y_train)
-plot_tree(mdl)
-print("Score:", mdl.predict(X_test), y_test)
+#print("Training model...")
+#mdl = DecisionTreeRegressor()
+#mdl = mdl.fit(X=X_train, y=y_train)
+#plot_tree(mdl)
+#print("Score:", mdl.predict(X_test), y_test)
+seq_length = 10
 
 # Create temporal dataset
-for X_train_temporal, y_train_temporal in temporal_input_generator(feature_matrix,
-                                                                   mood_index=MOOD_INDEX,
-                                                                   id_index=ID_INDEX,
-                                                                   min_sequence_len=10):
-    # Do something input
-    pass
+
 
 # TODO Bram: train a temporal model, e.g. LSTM, RNN, etc.
+traiX=[]
+traiY=[]
+for trX, trY in temporal_input_generator(feature_matrix,mood_index=MOOD_INDEX,id_index=ID_INDEX,min_sequence_len=10, max_sequence_len=10):
+    trX=[[float(i) for i in x]for x in trX]
+    a=np.array(trX)
+
+    trY=float(trY)
+    traiX.append(trX)
+    traiY.append(trY)
+
+class LSTM(nn.Module):
+    def __init__(self, num_classes, input_size, hidden_size, num_layers):
+        super(LSTM, self).__init__()
+        
+        self.num_classes = num_classes
+        self.num_layers = num_layers
+        self.input_size = input_size
+        self.hidden_size = hidden_size
+        self.seq_length = seq_length
+        
+        self.lstm = nn.LSTM(input_size=input_size, hidden_size=hidden_size,
+                            num_layers=num_layers, batch_first=True)
+        
+        self.fc = nn.Linear(hidden_size, num_classes)
+
+    def forward(self, x):
+        h_0 = Variable(torch.zeros(
+            self.num_layers, x.size(0), self.hidden_size))
+        
+        c_0 = Variable(torch.zeros(
+            self.num_layers, x.size(0), self.hidden_size))
+        
+        # Propagate input through LSTM
+        ula, (h_out, _) = self.lstm(x, (h_0, c_0))
+        
+        h_out = h_out.view(-1, self.hidden_size)
+        
+        out = self.fc(h_out)
+        
+        return out
+num_epochs = 900
+learning_rate = 0.01
+
+input_size = 47
+hidden_size = 2
+num_layers = 1
+
+num_classes = 1
+
+lstm = LSTM(num_classes, input_size, hidden_size, num_layers)
+
+criterion = torch.nn.MSELoss()    # mean-squared error for regression
+optimizer = torch.optim.Adam(lstm.parameters(), lr=learning_rate)
+#optimizer = torch.optim.SGD(lstm.parameters(), lr=learning_rate)
+
+# Train the model
+for epoch in range(num_epochs):
+
+    trainY = torch.Tensor(traiY)
+    
+    trainX = torch.Tensor(traiX)
+    outputs = lstm(trainX)
+    optimizer.zero_grad()
+
+    # obtain the loss function
+    loss = criterion(outputs, trainY)
+    loss.backward()
+    optimizer.step()
+    if epoch % 100 == 0:
+      print("Epoch: %d, loss: %1.5f" % (epoch, loss.item()))
 
 
+
+print(lstm(trainX))
+print(traiY)
 # TODO Giguru: compute two base lines. Simply take the mood the day before and take the average mood.
 
 
