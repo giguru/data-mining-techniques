@@ -108,7 +108,8 @@ DEFAULT_MOOD = 7.0
 
 MOOD_INDEX = -2
 ID_INDEX = -1
-N_NON_FEATURES = len([MOOD_INDEX, ID_INDEX])
+DATE_INDEX = -3
+N_NON_FEATURES = len([MOOD_INDEX, ID_INDEX, DATE_INDEX])
 
 N_DAY_WINDOW = 3
 save_file_path = os.path.join(OUTPUT_PATH, f'feature_non_temporal_{N_DAY_WINDOW}.csv')
@@ -126,6 +127,7 @@ else:
                             'activity': sum,
                             'sms': sum,
                             'call': sum,
+                            'mood': 'mean', # The mean must be always average per day
                            },
                            {
                             'circumplex.arousal': lambda daily_mean, _: np.mean(fill_defaults(daily_mean, N_DAY_WINDOW, DEFAULT_AROUSAL)),
@@ -141,11 +143,11 @@ else:
     feature_matrix = np.array([list(r[0].values()) + r[1:] for r in records])
     # Save data frame
     feature_labels = list(records[0][0].keys())
-    df = pd.DataFrame(feature_matrix, columns=feature_labels + ['mood', 'id'])
+    df = pd.DataFrame(feature_matrix, columns=feature_labels + ['date', 'mood', 'id'])
     check_existing_folder(OUTPUT_PATH)
     df.to_csv(save_file_path, index=False)
 
-# TODO Vincenzo: Decide normalisation constants using training set only and split train/test
+# Decide normalisation constants using training set only
 X_train, y_train, \
 y_train_scaled, \
 X_test, y_test, \
@@ -153,7 +155,7 @@ y_test_scaled, feature_labels, scale_back_df = scale_features_is_values(df, test
 print("Example row:", X_train[0])
 print("Example target:", y_train[0])
 
-# TODO Vincenzo: Feature selection using training set only: e.g. PCA
+# Feature selection using training set only: e.g. PCA
 attributes = pd.read_csv(os.path.join(OUTPUT_PATH, 'selected_attributes.csv'))
 n_cols = len(attributes.columns)
 this_attr = []

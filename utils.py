@@ -8,11 +8,14 @@ from typing import List, Dict, Callable, Union, Any
 from tqdm import tqdm
 from datetime import datetime
 import math
+from copy import copy
+from sklearn.model_selection import train_test_split
 
 
 __all__ = [
     'SECONDS_IN_DAY', 'VARIABLES_WITH_UNFIXED_RANGE', 'read_data', 'process_data',
     'get_subset_by_variable', 'fill_defaults', 'keep_per_day', 'mean', 'check_existing_folder',
+    'create_temporal_input', 'dataframe_to_dict_per_day'
 ]
 
 DATE_FORMAT = '%Y-%m-%d'
@@ -88,23 +91,37 @@ def mean(values_list):
     return np.mean(values_list) if len(values_list) > 0 else 0
 
 
-def aggregate_actions_per_user_per_day(df: DataFrame, variable_key, agg_func):
-    df_only_variable = df[df['variable'] == variable_key]
-    df_aggregate_variable_per_date_and_user = df_only_variable.groupby(
-        [df_only_variable['time'].dt.date, df_only_variable['id']]
-    ).agg({
-        'value': agg_func,
-        'timestamp': 'max',
-        'time': 'max',
-        'id': 'first',  # Retain the value
-        'variable': 'first',  # Retain the value
-        'week_day': 'first'  # Retain the value
-    })
+def build_extended_key(variable_key: str, agg_func):
+    name = getattr(agg_func, '__name__') if callable(agg_func) else agg_func  # Assume it's a string otherwise1q1q
+    return f"{variable_key}_{name}"
 
-    # Data without the variable column
+
+def aggregate_actions_per_user_per_day(df: DataFrame, variable_key, agg_func, rename_variable:bool=False):
+    df_only_variable = df[df['variable'] == variable_key]
     df_without_variable = df[df['variable'] != variable_key]
-    df = pd.concat([df_aggregate_variable_per_date_and_user, df_without_variable])
-    return df, df_aggregate_variable_per_date_and_user
+
+    func_list = agg_func if type(agg_func) == list else [agg_func]
+
+    for func in func_list:
+        df_aggregate_variable_per_date_and_user = df_only_variable.groupby(
+            [df_only_variable['time'].dt.date, df_only_variable['id']]
+        ).agg({
+            'value': func,
+            'timestamp': 'max',
+            'time': 'max',
+            'id': 'first',  # Retain the value
+            'variable': 'first',  # Retain the value
+            'week_day': 'first'  # Retain the value
+        })
+
+        if rename_variable:
+            df_aggregate_variable_per_date_and_user.replace(
+                # Replace e.g. 'mean' with 'mean_mood'
+                to_replace={variable_key: build_extended_key(variable_key, func)},
+                inplace=True
+            )
+        df = pd.concat([df_aggregate_variable_per_date_and_user, df_without_variable])
+    return df
 
 
 def keep_per_day(default: float):
@@ -127,14 +144,15 @@ def start_of_day(timestamp: int):
     return datetime.timestamp(dt_object)
 
 
-def to_date_string(date_object: np.datetime64):
+def to_date_string(date_object: datetime):
     return date_object.strftime(DATE_FORMAT)
 
 
 def process_data(df: DataFrame,
                  day_window: int,
                  aggregation_actions_per_user_per_day: Dict[str, str] = None,
-                 aggregation_actions_total_history: Dict[str, Union[Callable, List[Callable]]] = None
+                 aggregation_actions_total_history: Dict[str, Union[Callable, List[Callable]]] = None,
+                 rename_variable_per_day: bool = False
                  ):
     """
 
@@ -147,22 +165,19 @@ def process_data(df: DataFrame,
     if aggregation_actions_per_user_per_day is None:
         aggregation_actions_per_user_per_day = {}
 
-    # The mean must be always average per day
-    aggregation_actions_per_user_per_day['mood'] = 'mean'
-
     # some variable keys you would like to have average per day
     for variable_key, agg_func in aggregation_actions_per_user_per_day.items():
-        df, _ = aggregate_actions_per_user_per_day(df, variable_key, agg_func)
+        df = aggregate_actions_per_user_per_day(df, variable_key, agg_func, rename_variable=rename_variable_per_day)
 
     # Now create one data frame with the mean mood data and the non-mood data
-    sorted_df = df.sort_values(by=['timestamp'])
+    df.sort_values(by=['timestamp'], inplace=True)
 
     records = []  # type: List[List[Dict, float, str]]
     running_window = []  # type: List[pd.Series]
 
-    for index, row in tqdm(sorted_df.iterrows(), total=len(sorted_df), desc="Formatting records"):
-        # Build a features-target combination
-        if row['variable'] == 'mood':
+    for index, row in tqdm(df.iterrows(), total=len(df), desc="Formatting records"):
+        # Build a features-target combination for each mood. The mean variable may have been rewritten in e.g. mood_mean
+        if row['variable'] == 'mood' or 'mood' in row['variable']:
             # Remove records in running list before time frame
             first_index_in_frame = 0
             for idx, running_row in enumerate(running_window):
@@ -182,7 +197,7 @@ def process_data(df: DataFrame,
                 if aggregation_actions_total_history is None:
                     # Only append data of the user, but remove the ID.
                     # The ID is irrelevant for every machine learning model.
-                    features = [r.drop('id') for r in running_window if r['id'] == row['id']]
+                    features = [r.drop('id').to_dict() for r in running_window if r['id'] == row['id']]
                 else:
                     features = {key: [] for key in aggregation_actions_total_history.keys()}
                     for r in running_window:
@@ -204,24 +219,78 @@ def process_data(df: DataFrame,
                             variable_values = [r['value'] for r in features[variable_key]]
                             features[f"{variable_key}_custom"] = agg_func(variable_values, row)
                         elif callable(agg_func):
-                            name = getattr(agg_func, '__name__')
+                            extended_key = build_extended_key(variable_key, agg_func)
                             variable_values = [r['value'] for r in features[variable_key]]
-                            features[f"{variable_key}_{name}"] = agg_func(variable_values)
+                            features[extended_key] = agg_func(variable_values)
                         elif type(agg_func) == list:
                             variable_values = [r['value'] for r in features[variable_key]]
                             for func in agg_func:
-                                name = getattr(func, '__name__')
-                                features[f"{variable_key}_{name}"] = func(variable_values)
+                                extended_key = build_extended_key(variable_key, func)
+                                features[extended_key] = func(variable_values)
 
                         del features[variable_key]
                 records.append([
                     features,
+                    to_date_string(row['time']),
                     row['value'],  # the target
-                    row['id']
+                    row['id'],
                 ])
 
         running_window.append(row)
     return records
+
+
+def dataframe_to_dict_per_day(df: DataFrame, default_callables: Dict[str, Callable]):
+    """
+
+    :param df:
+    :param default_callables:
+    :return: returns a dict of the format:
+        {
+            "user id 1" : {
+                "yyyy-mm-dd": {
+                    "feature 1": value 1,
+                    "feature 2": value 2,
+                    ...
+                },
+                ...
+            },
+            ...
+        }
+    """
+    per_user_per_day = {}
+    for _, r in df.iterrows():
+        date = to_date_string(r['time'])
+        variable = r['variable']
+        user_id = r['id']
+        if user_id not in per_user_per_day:
+            per_user_per_day[user_id] = {}
+
+        if date not in per_user_per_day[user_id]:
+            per_user_per_day[user_id][date] = {}
+
+        assert variable not in per_user_per_day[user_id][date], "The records must have already been aggregated per user per day"
+
+        per_user_per_day[user_id][date][variable] = r['value']
+
+    for user_id, features_per_day in dict(per_user_per_day).items():
+        prev_day_features = {}
+        for date, found_features_dict in features_per_day.items():
+            defaults = {}
+            for key, func in default_callables.items():
+                defaults[key] = func(
+                    found_features_dict[key] if key in found_features_dict else None,
+                    prev_day_features[key] if key in prev_day_features else None
+                )
+
+            per_user_per_day[user_id][date] = {
+                **defaults,
+                # Overwrite with found features
+                **found_features_dict
+            }
+            prev_day_features = copy(per_user_per_day[user_id][date])
+
+    return per_user_per_day
 
 
 def fill_defaults(items: List, wanted_count: int, default_value):
@@ -240,3 +309,41 @@ def check_existing_folder(this_path):
         os.makedirs(my_dir)
         print("created folder : ", my_dir)
 
+
+def create_temporal_input(per_user_per_day: Dict[str, dict],
+                          min_sequence_len: int,
+                          max_sequence_len: int = 1000,
+                          mood_key: str = 'mood_mean',
+                          train_size: float = 0.8):
+    """
+    This method assumes the records are ordered by ascending date.
+    """
+
+    total_x_train, total_y_train, total_x_test, total_y_test = [], [], [], []
+
+    for user_id, all_user_records in per_user_per_day.items():
+        all_user_records = np.array(list(all_user_records.values()))
+        user_inputs, user_targets = [], []
+
+        for current_index in range(min_sequence_len, len(all_user_records)):
+            start_input_index = max(0, current_index - max_sequence_len)
+            last_input_index = current_index-1
+
+            if mood_key in all_user_records[current_index]:
+                input_records = list(all_user_records[start_input_index:last_input_index])
+                target = all_user_records[current_index][mood_key]
+
+                user_inputs.append(input_records)
+                user_targets.append(target)
+
+        user_targets = np.array(user_targets)
+        user_inputs = np.array(user_inputs)
+        idx = int(len(user_inputs) * train_size)
+
+        total_x_train += list(user_inputs[:idx])
+        total_y_train += list(user_targets[:idx])
+
+        total_x_test += list(user_inputs[idx:])
+        total_y_test += list(user_targets[idx:])
+
+    return total_x_train, total_y_train, total_x_test, total_y_test
