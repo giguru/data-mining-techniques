@@ -1,15 +1,11 @@
 import pandas as pd
-from pandas import DataFrame
 from utils import process_data, read_data, VARIABLES_WITH_UNFIXED_RANGE, fill_defaults, keep_per_day, mean, \
-    check_existing_folder, temporal_input_generator
-import seaborn as sn
+    check_existing_folder
 import numpy as np
 import os
-from matplotlib import pyplot as plt
 from matplotlib.pyplot import figure
-from sklearn.model_selection import train_test_split
 from sklearn.tree import DecisionTreeRegressor, plot_tree
-from sklearn.neighbors import KNeighborsClassifier
+
 figure(figsize=(20, 20), dpi=80)
 
 
@@ -102,12 +98,6 @@ def scale_features_is_values(df, test_size=0.2, save_csv=True):
     return X_train, y_train, y_train_scaled, X_test, y_test, y_test_scaled, feature_labels, scale_back_df
 
 
-def normalize(means):
-    computed_std = np.std(means)
-    std = computed_std if computed_std > 0 else 1
-    return np.mean(means) / std
-
-
 OUTPUT_PATH = './output/'
 
 DEFAULT_CALL = 0
@@ -175,27 +165,11 @@ feat_index = [idx for idx in range(len(feature_labels)) if feature_labels[idx] i
 X_train = X_train[:, feat_index]
 X_test = X_test[:, feat_index]
 
-# Print correlation matrix
-# corrMatrix = DataFrame(X, columns=feature_labels).apply(pd.to_numeric).corr(method='pearson')
-# sn.heatmap(corrMatrix, annot=True)
-# plt.show()
-
-
-# TODO training a non-temporal model
 print("Training model...")
 mdl = DecisionTreeRegressor()
 mdl = mdl.fit(X=X_train, y=y_train)
 plot_tree(mdl)
 print("Score:", mdl.predict(X_test), y_test)
-
-
-# Create temporal dataset
-for X_train_temporal, y_train_temporal in temporal_input_generator(feature_matrix,
-                                                                   mood_index=MOOD_INDEX,
-                                                                   id_index=ID_INDEX,
-                                                                   min_sequence_len=10):
-    # Do something input
-    pass
 
 # TODO Bram: train a temporal model, e.g. LSTM, RNN, etc.
 

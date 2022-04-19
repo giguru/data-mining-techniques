@@ -13,7 +13,6 @@ import math
 __all__ = [
     'SECONDS_IN_DAY', 'VARIABLES_WITH_UNFIXED_RANGE', 'read_data', 'process_data',
     'get_subset_by_variable', 'fill_defaults', 'keep_per_day', 'mean', 'check_existing_folder',
-    'temporal_input_generator'
 ]
 
 DATE_FORMAT = '%Y-%m-%d'
@@ -240,30 +239,4 @@ def check_existing_folder(this_path):
     if not check_folder:
         os.makedirs(my_dir)
         print("created folder : ", my_dir)
-
-
-def temporal_input_generator(feature_matrix: np.ndarray,
-                             mood_index: int,
-                             id_index: int,
-                             min_sequence_len: int,
-                             max_sequence_len: int = 1000):
-    """
-    This method assumes the records are ordered by ascending date.
-    """
-    per_user = defaultdict(list)  # type: Dict[str, List[int]]
-
-    for idx, record in enumerate(feature_matrix):
-        user_id = record[id_index]
-        per_user[user_id].append(idx)
-
-    for user_id, user_records in per_user.items():
-        user_records = np.array(user_records)
-
-        for current_index in range(min_sequence_len, len(user_records)):
-            start_input_index = max(0, current_index - max_sequence_len)
-            last_input_index = current_index-1
-            wanted_feature_records_indices = user_records[start_input_index:last_input_index]
-            input_records = [list(feature_matrix[idx][:-3]) for idx in wanted_feature_records_indices]
-            target = feature_matrix[current_index][mood_index]
-            yield input_records, target
 
