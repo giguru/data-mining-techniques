@@ -312,32 +312,36 @@ def create_temporal_input(per_user_per_day: Dict[str, dict],
                           min_sequence_len: int,
                           max_sequence_len: int = 1000,
                           mood_key: str = 'mood_mean',
-                          test_size: float = 0.2):
+                          train_size: float = 0.8):
     """
     This method assumes the records are ordered by ascending date.
     """
 
     total_x_train, total_y_train, total_x_test, total_y_test = [], [], [], []
 
-    for user_id, user_records in per_user_per_day.items():
-        user_records = np.array(list(user_records.values()))
+    for user_id, all_user_records in per_user_per_day.items():
+        all_user_records = np.array(list(all_user_records.values()))
         user_inputs, user_targets = [], []
 
-        for current_index in range(min_sequence_len, len(user_records)):
+        for current_index in range(min_sequence_len, len(all_user_records)):
             start_input_index = max(0, current_index - max_sequence_len)
             last_input_index = current_index-1
 
-            if mood_key in user_records[current_index]:
-                input_records = user_records[start_input_index:last_input_index]
-                target = user_records[current_index][mood_key]
+            if mood_key in all_user_records[current_index]:
+                input_records = list(all_user_records[start_input_index:last_input_index])
+                target = all_user_records[current_index][mood_key]
 
                 user_inputs.append(input_records)
                 user_targets.append(target)
 
-        user_x_train, user_y_train, user_x_test, user_y_test = train_test_split(user_inputs, user_targets, test_size=test_size)
-        total_x_train.append(user_x_train)
-        total_y_train.append(user_y_train)
-        total_x_test.append(user_x_test)
-        total_y_test.append(user_y_test)
+        user_targets = np.array(user_targets)
+        user_inputs = np.array(user_inputs)
+        idx = int(len(user_inputs) * train_size)
+
+        total_x_train += list(user_inputs[:idx])
+        total_y_train += list(user_targets[:idx])
+
+        total_x_test += list(user_inputs[idx:])
+        total_y_test += list(user_targets[idx:])
 
     return total_x_train, total_y_train, total_x_test, total_y_test

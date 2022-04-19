@@ -1,10 +1,11 @@
-import pandas as pd
 from utils import read_data, VARIABLES_WITH_UNFIXED_RANGE, mean, \
     create_temporal_input, \
     aggregate_actions_per_user_per_day, dataframe_to_dict_per_day
 import numpy as np
-import os
+from sklearn.metrics import r2_score, confusion_matrix, ConfusionMatrixDisplay
+import matplotlib.pyplot as plt
 from matplotlib.pyplot import figure
+
 figure(figsize=(20, 20), dpi=80)
 
 
@@ -70,8 +71,24 @@ X_train, y_train, X_test, y_test = create_temporal_input(records, min_sequence_l
 # TODO Bram: train a temporal model, e.g. LSTM, RNN, etc.
 
 
-# TODO Giguru: compute two base lines. Simply take the mood the day before and take the average mood.
+# Compute two base lines. Simply take the mood the day before and take the average mood.
+predictions_last_mood_train = [r[len(r)-1]['mood_mean'] for r in X_train]
+mood_labels = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+score_last_mood_train = r2_score(y_true=y_train, y_pred=predictions_last_mood_train)
+cm = confusion_matrix(y_true=[round(v) for v in y_train],
+                      y_pred=[round(v) for v in predictions_last_mood_train],
+                      labels=mood_labels)
+ConfusionMatrixDisplay(confusion_matrix=cm, display_labels=mood_labels).plot()
+plt.title("Baselines - train data")
+plt.show()
 
+predictions_last_mood_test = [r[len(r)-1]['mood_mean'] for r in X_test]
+score_last_mood_test = r2_score(y_true=y_test, y_pred=predictions_last_mood_test)
+cm = confusion_matrix(y_true=[round(v) for v in y_test],
+                      y_pred=[round(v) for v in predictions_last_mood_test],
+                      labels=mood_labels)
+ConfusionMatrixDisplay(confusion_matrix=cm, display_labels=mood_labels).plot()
+plt.title("Baselines - test data")
+plt.show()
 
-# TODO Evaluation: confusion matrix, mean squared error, qualitative prediction power per user.
-
+# TODO Evaluation: qualitative prediction power per user.
