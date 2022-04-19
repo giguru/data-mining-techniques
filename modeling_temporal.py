@@ -30,7 +30,7 @@ N_NON_FEATURES = len([MOOD_INDEX, ID_INDEX, DATE_INDEX])
 
 N_DAY_WINDOW = 1
 
-data = read_data()
+data_df = read_data()
 aggregation_actions_per_user_per_day = {
     'mood': 'mean',  # The mean must be always average per day
     'circumplex.arousal': mean,
@@ -42,12 +42,12 @@ aggregation_actions_per_user_per_day = {
 }
 
 for variable_key, agg_func in aggregation_actions_per_user_per_day.items():
-    data = aggregate_actions_per_user_per_day(data, variable_key, agg_func, rename_variable=True)
+    data_df = aggregate_actions_per_user_per_day(data_df, variable_key, agg_func, rename_variable=True)
 
-data.sort_values(by=['timestamp'], inplace=True)
+data_df.sort_values(by=['timestamp'], inplace=True)
 
-records = dataframe_to_dict_per_day(data,
-                                    default_callables={
+per_user_per_day_index = dataframe_to_dict_per_day(data_df,
+                                                   default_callables={
                                         'mood_mean': lambda current, prev: current or prev or DEFAULT_MOOD,
                                         'circumplex.arousal_mean': lambda current, prev: current or DEFAULT_AROUSAL,
                                         'circumplex.valence_mean': lambda current, prev: current or DEFAULT_VALENCE,
@@ -65,8 +65,17 @@ records = dataframe_to_dict_per_day(data,
 # TODO Vincenzo: Feature selection using training set only: e.g. PCA
 
 # Create temporal dataset
-X_train, y_train, X_test, y_test = create_temporal_input(records, min_sequence_len=10)
-
+per_user = { # TODO for normalisation
+    'user A': [ # only training records
+        {'featureA': ...},
+        {'featureA': ...},
+        {'featureA': ...},
+        {'featureA': ...},
+    ]
+}
+X_train, y_train, X_test, y_test = create_temporal_input(per_user_per_day_index, min_sequence_len=10)
+print("Example input: ", X_train[0])
+print("Example target: ", y_train[0])
 
 # TODO Bram: train a temporal model, e.g. LSTM, RNN, etc.
 

@@ -340,10 +340,10 @@ def create_temporal_input(per_user_per_day: Dict[str, dict],
         user_inputs = np.array(user_inputs)
         idx = int(len(user_inputs) * train_size)
 
-        total_x_train += list(user_inputs[:idx])
-        total_y_train += list(user_targets[:idx])
+        total_x_train.append((user_id, list(user_inputs[:idx])))
+        total_y_train.append((user_id, list(user_targets[:idx])))
 
-        total_x_test += list(user_inputs[idx:])
-        total_y_test += list(user_targets[idx:])
+        total_x_test.append((user_id, list(user_inputs[idx:])))
+        total_y_test.append((user_id, list(user_targets[idx:])))
 
     return total_x_train, total_y_train, total_x_test, total_y_test

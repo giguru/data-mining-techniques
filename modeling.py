@@ -173,8 +173,6 @@ mdl = mdl.fit(X=X_train, y=y_train)
 plot_tree(mdl)
 print("Score:", mdl.predict(X_test), y_test)
 
-# TODO Bram: train a temporal model, e.g. LSTM, RNN, etc.
-
 
 # TODO Giguru: compute two base lines. Simply take the mood the day before and take the average mood.
 
