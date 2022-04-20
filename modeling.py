@@ -1,6 +1,6 @@
 import pandas as pd
 from utils import process_data, read_data, VARIABLES_WITH_UNFIXED_RANGE, fill_defaults, keep_per_day, mean, \
-    check_existing_folder, MAX_ATTRIBUTE, FIXED_STD_ATTRIBUTE, compute_metrics
+    check_existing_folder, MAX_ATTRIBUTE, FIXED_STD_ATTRIBUTE, compute_metrics, get_selected_attributes
 import numpy as np
 import os
 from matplotlib.pyplot import figure
@@ -157,12 +157,7 @@ print("Example row:", X_train[0])
 print("Example target:", y_train[0])
 
 # Feature selection using training set only: e.g. PCA
-attributes = pd.read_csv(os.path.join(OUTPUT_PATH, 'selected_attributes.csv'))
-n_cols = len(attributes.columns)
-this_attr = []
-for i in range(n_cols):
-    this_attr = this_attr + list(attributes[str(i)].dropna().values)
-this_attr = list(set(this_attr))
+this_attr = get_selected_attributes(OUTPUT_PATH)
 
 feat_index = [idx for idx in range(len(feature_labels)) if feature_labels[idx] in this_attr]
 feat_index_labels = [feature_labels[idx] for idx in range(len(feature_labels)) if feature_labels[idx] in this_attr]
