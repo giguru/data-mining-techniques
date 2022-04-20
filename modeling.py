@@ -1,10 +1,12 @@
 import pandas as pd
 from utils import process_data, read_data, VARIABLES_WITH_UNFIXED_RANGE, fill_defaults, keep_per_day, mean, \
-    check_existing_folder, MAX_ATTRIBUTE, FIXED_STD_ATTRIBUTE, compute_baseline_metrics
+    check_existing_folder, MAX_ATTRIBUTE, FIXED_STD_ATTRIBUTE, compute_metrics
 import numpy as np
 import os
 from matplotlib.pyplot import figure
 from sklearn.tree import DecisionTreeRegressor, plot_tree
+from sklearn.linear_model import LinearRegression
+from sklearn.svm import SVR
 
 figure(figsize=(20, 20), dpi=80)
 
@@ -163,26 +165,34 @@ for i in range(n_cols):
 this_attr = list(set(this_attr))
 
 feat_index = [idx for idx in range(len(feature_labels)) if feature_labels[idx] in this_attr]
+feat_index_labels = [feature_labels[idx] for idx in range(len(feature_labels)) if feature_labels[idx] in this_attr]
 X_train = X_train[:, feat_index]
 X_test = X_test[:, feat_index]
 
-print("Training model...")
-mdl = DecisionTreeRegressor()
-mdl = mdl.fit(X=X_train, y=y_train)
-plot_tree(mdl)
-print("Score:", mdl.predict(X_test), y_test)
+print("\nTraining model...")
+print("Example train input:\n  Labels:\n", feat_index_labels, "\n  Input:\n", X_train[0])
+print("Example train target:", y_train_scaled[0], "\n")
 
+mdl = LinearRegression()
+mdl.fit(X=X_train, y=y_train_scaled)
+# plot_tree(mdl)
+
+# Evaluate on test set
+y_pred = mdl.predict(X_test)
+print("Example test predictions:", y_pred[:5])
+print("Example test truths:", y_test_scaled[:5])
+compute_metrics(y_true=y_test_scaled, y_pred=y_pred, scaled=True, title="test")
 
 # Compute baseline
 mood_idx = this_attr.index('mood_1_day_before')
 predictions_last_mood_train = [r[mood_idx] for r in X_train]
-compute_baseline_metrics(y_true=y_train_scaled,
-                         y_pred=predictions_last_mood_train,
-scaled=True,
-                         title="train data")
+compute_metrics(y_true=y_train_scaled,
+                y_pred=predictions_last_mood_train,
+                scaled=True,
+                title="baseline train data")
 
 predictions_last_mood_test = [r[mood_idx] for r in X_test]
-compute_baseline_metrics(y_true=y_test_scaled,
-                         y_pred=predictions_last_mood_test,
-                         scaled=True,
-                         title="test data")
+compute_metrics(y_true=y_test_scaled,
+                y_pred=predictions_last_mood_test,
+                scaled=True,
+                title="baseline test data")

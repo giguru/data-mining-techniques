@@ -1,7 +1,7 @@
 from utils import read_data, VARIABLES_WITH_UNFIXED_RANGE, mean, \
     create_temporal_input, \
     aggregate_actions_per_user_per_day, dataframe_to_dict_per_day, get_normalising_constants, \
-    apply_normalisation_constants, compute_baseline_metrics
+    apply_normalisation_constants, compute_metrics
 from matplotlib.pyplot import figure
 
 figure(figsize=(20, 20), dpi=80)
@@ -70,13 +70,13 @@ X_test = apply_normalisation_constants(X_test, normalisation_constants)
 
 # Compute two baseline. Simply take the mood the day before and take the average mood.
 predictions_last_mood_train = [r[len(r)-1]['mood_mean'] for r in X_train]
-compute_baseline_metrics(y_true=y_train,
-                         y_pred=predictions_last_mood_train,
-                         title="train data")
+compute_metrics(y_true=y_train,
+                y_pred=predictions_last_mood_train,
+                title="train data")
 
 predictions_last_mood_test = [r[len(r)-1]['mood_mean'] for r in X_test]
-compute_baseline_metrics(y_true=y_train,
-                         y_pred=predictions_last_mood_test,
-                         title="test data")
+compute_metrics(y_true=y_train,
+                y_pred=predictions_last_mood_test,
+                title="test data")
 
 # TODO Evaluation: qualitative prediction power per user.
