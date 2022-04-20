@@ -94,35 +94,44 @@ for epoch in range(N_EPOCHS):
             optimizer.step()
 
 # Do eval
-y_pred = []
+y_pred_test = []
+y_true_test = []
+y_pred_last_mood_test = []
+MOOD_INDEX = 0
 for user_input_data, user_target_data in tqdm(zip(X_test, y_test), total=len(X_train), desc=f"Evaluating"):
     _, inputs = user_input_data
     _, targets = user_target_data
 
     for input, target in zip(inputs, targets):
-        trainX = torch.tensor([input]).double()
-        trainY = torch.tensor([target]).double()
-        outputs = lstm(trainX)
+        outputs = lstm(torch.tensor([input]).double())
 
-        y_pred.append(float(outputs[0]))
+        y_pred_test.append(float(outputs[0]))
+        y_true_test.append(target)
+        y_pred_last_mood_test.append(input[-1][MOOD_INDEX])
 
-flattened_y_true = []
-for _, preds in y_test:
-    flattened_y_true += preds
-print("Example y_true: ", flattened_y_true[:10])
-print("Example y_pred: ", y_pred[:10])
-compute_metrics(y_true=flattened_y_true,
-                y_pred=y_pred,
+
+print("Example y_true: ", y_true_test[:10])
+print("Example y_pred: ", y_pred_test[:10])
+compute_metrics(y_true=y_true_test,
+                y_pred=y_pred_test,
                 title="temporal data")
 
 # Compute two baseline. Simply take the mood the day before and take the average mood.
-MOOD_INDEX = -1
-predictions_last_mood_train = [r[1][len(r)-1][MOOD_INDEX] for r in X_train]
-compute_metrics(y_true=y_train,
+compute_metrics(y_true=y_true_test,
+                y_pred=y_pred_last_mood_test,
+                title="baseline test data")
+
+predictions_last_mood_train, y_train_flattened = [], []
+for user_input_data, user_target_data in tqdm(zip(X_train, y_train), total=len(X_train), desc=f"Evaluating"):
+    _, inputs = user_input_data
+    _, targets = user_target_data
+
+    for input, target in zip(inputs, targets):
+        predictions_last_mood_train.append(input[-1][MOOD_INDEX])
+        y_train_flattened.append(target)
+
+compute_metrics(y_true=y_train_flattened,
                 y_pred=predictions_last_mood_train,
                 title="baseline train data")
 
-predictions_last_mood_test = [r[1][len(r)-1][MOOD_INDEX] for r in X_test]
-compute_metrics(y_true=y_train,
-                y_pred=predictions_last_mood_test,
-                title="baseline test data")
+
