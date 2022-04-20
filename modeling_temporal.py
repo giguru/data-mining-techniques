@@ -3,11 +3,17 @@ from utils import read_data, VARIABLES_WITH_UNFIXED_RANGE, mean, \
     aggregate_actions_per_user_per_day, dataframe_to_dict_per_day, get_normalising_constants, \
     apply_normalisation_constants, compute_metrics, get_selected_attributes, convert_to_list
 from matplotlib.pyplot import figure
+import matplotlib.pyplot as plt
 import torch
 from model_classes import LSTM
 from tqdm import tqdm
 import numpy as np
+import random
 
+
+random.seed(42)
+torch.manual_seed(42)
+np.random.seed(42)
 
 figure(figsize=(20, 20), dpi=80)
 
@@ -19,7 +25,7 @@ DEFAULT_AROUSAL = 0
 DEFAULT_VALENCE = 1
 DEFAULT_MOOD = 7.0
 DEFAULT_SCREENREST = 0
-N_EPOCHS = 200
+N_EPOCHS = 120
 
 data_df = read_data()
 aggregation_actions_per_user_per_day = {
@@ -99,6 +105,7 @@ def do_eval():
 
 
 # Train the model
+train_losses = []
 for epoch in range(N_EPOCHS):
     lstm.train()
     for user_input_data, user_target_data in tqdm(zip(X_train, y_train), total=len(X_train), desc=f"Epoch {epoch}"):
@@ -116,9 +123,13 @@ for epoch in range(N_EPOCHS):
             loss.backward()
             optimizer.step()
 
-    if (epoch + 1) % 10 == 0:
+    if epoch % 10 == 0:
         _, _, _, total_loss = do_eval()
         print("Loss: ", total_loss)
+        train_losses.append(total_loss.item())
+
+plt.plot(train_losses)
+plt.show()
 
 y_pred_test, y_true_test, y_pred_last_mood_test, _ = do_eval()
 
