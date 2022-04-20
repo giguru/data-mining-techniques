@@ -8,13 +8,15 @@ from tqdm import tqdm
 from datetime import datetime
 import math
 from copy import copy
+from sklearn.metrics import r2_score, confusion_matrix, ConfusionMatrixDisplay
+import matplotlib.pyplot as plt
 
 
 __all__ = [
     'SECONDS_IN_DAY', 'VARIABLES_WITH_UNFIXED_RANGE', 'read_data', 'process_data',
     'get_subset_by_variable', 'fill_defaults', 'keep_per_day', 'mean', 'check_existing_folder',
     'create_temporal_input', 'dataframe_to_dict_per_day', 'MAX_ATTRIBUTE', 'get_normalising_constants',
-    'FIXED_STD_ATTRIBUTE', 'apply_normalisation_constants'
+    'FIXED_STD_ATTRIBUTE', 'apply_normalisation_constants', 'compute_baseline_metrics'
 ]
 
 DATE_FORMAT = '%Y-%m-%d'
@@ -51,6 +53,17 @@ MAX_ATTRIBUTE = ['circumplex.arousal_custom', 'circumplex.valence_custom', 'acti
                  'appCat.social_mean', 'appCat.social_len', 'appCat.travel_mean', 'appCat.travel_len',
                  'appCat.unknown_mean', 'appCat.unknown_len', 'appCat.utilities_mean', 'appCat.utilities_len',
                  'appCat.weather_mean', 'appCat.weather_len']
+
+
+def compute_baseline_metrics(y_true, y_pred, title: str, scaled: bool = False):
+    mood_labels = [-3, -2, -1, 0, 1, 2, 3] if scaled else [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+    print(f"r2 - {title}", r2_score(y_true=y_true, y_pred=y_pred))
+    cm = confusion_matrix(y_true=[round(v) for v in y_true],
+                          y_pred=[round(v) for v in y_pred],
+                          labels=mood_labels)
+    ConfusionMatrixDisplay(confusion_matrix=cm, display_labels=mood_labels).plot()
+    plt.title(f"Baselines - {title}")
+    plt.show()
 
 
 def apply_normalisation_constants(X_train, normalisation_constants: Dict[str, Dict[str, Dict[str, float]]]):

@@ -1,8 +1,7 @@
 from utils import read_data, VARIABLES_WITH_UNFIXED_RANGE, mean, \
     create_temporal_input, \
-    aggregate_actions_per_user_per_day, dataframe_to_dict_per_day, get_normalising_constants, apply_normalisation_constants
-from sklearn.metrics import r2_score, confusion_matrix, ConfusionMatrixDisplay
-import matplotlib.pyplot as plt
+    aggregate_actions_per_user_per_day, dataframe_to_dict_per_day, get_normalising_constants, \
+    apply_normalisation_constants, compute_baseline_metrics
 from matplotlib.pyplot import figure
 
 figure(figsize=(20, 20), dpi=80)
@@ -69,24 +68,15 @@ X_test = apply_normalisation_constants(X_test, normalisation_constants)
 # TODO Bram: train a temporal model, e.g. LSTM, RNN, etc.
 
 
-# Compute two base lines. Simply take the mood the day before and take the average mood.
+# Compute two baseline. Simply take the mood the day before and take the average mood.
 predictions_last_mood_train = [r[len(r)-1]['mood_mean'] for r in X_train]
-mood_labels = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
-score_last_mood_train = r2_score(y_true=y_train, y_pred=predictions_last_mood_train)
-cm = confusion_matrix(y_true=[round(v) for v in y_train],
-                      y_pred=[round(v) for v in predictions_last_mood_train],
-                      labels=mood_labels)
-ConfusionMatrixDisplay(confusion_matrix=cm, display_labels=mood_labels).plot()
-plt.title("Baselines - train data")
-plt.show()
+compute_baseline_metrics(y_true=y_train,
+                         y_pred=predictions_last_mood_train,
+                         title="train data")
 
 predictions_last_mood_test = [r[len(r)-1]['mood_mean'] for r in X_test]
-score_last_mood_test = r2_score(y_true=y_test, y_pred=predictions_last_mood_test)
-cm = confusion_matrix(y_true=[round(v) for v in y_test],
-                      y_pred=[round(v) for v in predictions_last_mood_test],
-                      labels=mood_labels)
-ConfusionMatrixDisplay(confusion_matrix=cm, display_labels=mood_labels).plot()
-plt.title("Baselines - test data")
-plt.show()
+compute_baseline_metrics(y_true=y_train,
+                         y_pred=predictions_last_mood_test,
+                         title="test data")
 
 # TODO Evaluation: qualitative prediction power per user.

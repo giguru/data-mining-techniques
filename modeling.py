@@ -1,6 +1,6 @@
 import pandas as pd
 from utils import process_data, read_data, VARIABLES_WITH_UNFIXED_RANGE, fill_defaults, keep_per_day, mean, \
-    check_existing_folder, MAX_ATTRIBUTE, FIXED_STD_ATTRIBUTE
+    check_existing_folder, MAX_ATTRIBUTE, FIXED_STD_ATTRIBUTE, compute_baseline_metrics
 import numpy as np
 import os
 from matplotlib.pyplot import figure
@@ -34,56 +34,65 @@ def scale_features_is_values(df, test_size=0.2, save_csv=True):
     # format DF
     mood_cols = [f'mood_{1+x}_day_before' for x in range(N_DAY_WINDOW)]
     mood_cols_scaled = [f'mood_{1+x}_day_before_scaled' for x in range(N_DAY_WINDOW)]
-    cols_2_drop = [col for col in df.columns if col[-3:] == 'sum'] #  these are redundant
+    cols_2_drop = [col for col in df.columns if col[-3:] == 'sum']  #  these are redundant
     std_attribute = mood_cols_scaled + FIXED_STD_ATTRIBUTE
-    #take DF, assign IS/OS lable, compute mean, return X_train, ...
-    this_df = df.copy()
-    for i in range(N_DAY_WINDOW):
-        this_df[f'mood_{1+i}_day_before_scaled'] = this_df[f'mood_{1+i}_day_before']
-    this_df = this_df.loc[:, mood_cols_scaled + this_df.columns.to_list()[:-N_DAY_WINDOW]]
-    this_df.iloc[:, :-1] = this_df.iloc[:, :-1].astype(float)
-    this_df.loc[:, 'mood_scaled'] = this_df.loc[:, 'mood']
-    this_df.drop(columns=cols_2_drop, inplace=True)
-    this_df['mood_before_mean'] = this_df.loc[:, mood_cols].mean(axis=1)
-    to_sort = [col for col in this_df.columns.to_list() if col not in ['mood_before_mean', 'id']]
-    this_df = this_df.loc[:, to_sort + ['mood_before_mean', 'id']] #reorder
-    #select is
-    this_df['rand'] = np.random.random_sample(len(this_df))
-    no_change = [cols for cols in this_df.columns if cols not in MAX_ATTRIBUTE + std_attribute + ['id']]
-    this_df_is = this_df.loc[this_df.rand > test_size]
+    # take DF, assign IS/OS lable, compute mean, return X_train, ...
+    df_copy = df.copy()
 
-    #parameters for std
+    # Add new columns
+    for i in range(N_DAY_WINDOW):
+        df_copy[f'mood_{1+i}_day_before_scaled'] = df_copy[f'mood_{1+i}_day_before']
+
+    df_copy = df_copy.loc[:, mood_cols_scaled + df_copy.columns.to_list()[:-N_DAY_WINDOW]]
+
+    exclude_index = -3  # Minus three, such that the date columns is not cast to a float
+    df_copy.iloc[:, :exclude_index] = df_copy.iloc[:, :exclude_index].astype(float)
+    df_copy.loc[:, 'mood_scaled'] = df_copy.loc[:, 'mood']
+    df_copy.drop(columns=cols_2_drop, inplace=True)
+    df_copy['mood_before_mean'] = df_copy.loc[:, mood_cols].mean(axis=1)
+    to_sort = [col for col in df_copy.columns.to_list() if col not in ['mood_before_mean', 'id']]
+    df_copy = df_copy.loc[:, to_sort + ['mood_before_mean', 'id']] #reorder
+    # select is
+    df_copy['rand'] = np.random.random_sample(len(df_copy))
+    no_change = [cols for cols in df_copy.columns if cols not in MAX_ATTRIBUTE + std_attribute + ['id']]
+    this_df_is = df_copy.loc[df_copy.rand > test_size]
+
+    # parameters for std
     mean_dict = dict(zip(std_attribute, ['mean']*len(std_attribute)))
     scaling_dict = dict(zip(std_attribute + MAX_ATTRIBUTE, ['std'] * len(std_attribute) + ['max'] * len(MAX_ATTRIBUTE)))
 
     is_mean = this_df_is.loc[:, std_attribute+['id']].groupby(['id']).agg(mean_dict)
     is_mean.loc[:, MAX_ATTRIBUTE + no_change] = 0
+
+    # -1 to prevent computing std of
     is_std = this_df_is.iloc[:, :-1].groupby(['id']).agg(scaling_dict)
     is_std = is_std.replace(0, 1)
     is_std.loc[:, no_change] = 1
 
-    # save  the scaling factors for the y_rain_scale
+    # Save the scaling factors for the y_rain_scale
     scale_back_df = pd.DataFrame(index=is_std.index)
     scale_back_df['std'] = is_std['mood_scaled']
     scale_back_df['mean'] = is_mean['mood_scaled']
 
     # Transform on the whole dataset
-    this_df = this_df.set_index('id').subtract(is_mean)
-    this_df = this_df.divide(is_std).reset_index()
+    date_column = df_copy['date']
+    df_copy = df_copy.drop('date', axis=1).set_index('id').subtract(is_mean.drop('date', axis=1))
+    df_copy['date'] = date_column
+    df_copy = df_copy.divide(is_std).reset_index()
     # sort columns
-    sorted_cols = [cols for cols in this_df.columns if cols not in ['id', 'mood', 'mood_scaled', 'rand'] + mood_cols]
+    sorted_cols = [cols for cols in df_copy.columns if cols not in ['id', 'mood', 'mood_scaled', 'rand'] + mood_cols]
     sorted_cols = ['mood', 'mood_scaled', 'id', 'rand'] + mood_cols + sorted(sorted_cols)
-    this_df = this_df.loc[:, sorted_cols]
+    df_copy = df_copy.loc[:, sorted_cols]
 
-    #split is/os
-    df_is = this_df.loc[this_df.rand > test_size].drop(columns='rand')
-    df_os = this_df.loc[this_df.rand <= test_size].drop(columns='rand')
+    #split in-sample/out-sample
+    df_is = df_copy.loc[df_copy.rand > test_size].drop(columns='rand')
+    df_os = df_copy.loc[df_copy.rand <= test_size].drop(columns='rand')
     #save
     X_train, y_train, y_train_scaled = df_is.iloc[:, 2:].values, df_is.iloc[:, 0].values, df_is.iloc[:, 1].values
     X_test, y_test, y_test_scaled = df_os.iloc[:, 2:].values, df_os.iloc[:, 0].values, df_os.iloc[:, 1].values
     feature_labels = df_is.iloc[:, 2:].columns.to_list()
     if save_csv:
-        this_df.to_csv(os.path.join(OUTPUT_PATH, 'scaled_dataset.csv'), index=False)
+        df_copy.to_csv(os.path.join(OUTPUT_PATH, 'scaled_dataset.csv'), index=False)
         scale_back_df.to_csv(os.path.join(OUTPUT_PATH, 'scaled_factors.csv'))
     return X_train, y_train, y_train_scaled, X_test, y_test, y_test_scaled, feature_labels, scale_back_df
 
@@ -164,8 +173,16 @@ plot_tree(mdl)
 print("Score:", mdl.predict(X_test), y_test)
 
 
-# TODO Giguru: compute two base lines. Simply take the mood the day before and take the average mood.
+# Compute baseline
+mood_idx = this_attr.index('mood_1_day_before')
+predictions_last_mood_train = [r[mood_idx] for r in X_train]
+compute_baseline_metrics(y_true=y_train_scaled,
+                         y_pred=predictions_last_mood_train,
+scaled=True,
+                         title="train data")
 
-
-# TODO Evaluation: confusion matrix, mean squared error, qualitative prediction power per user.
-
+predictions_last_mood_test = [r[mood_idx] for r in X_test]
+compute_baseline_metrics(y_true=y_test_scaled,
+                         y_pred=predictions_last_mood_test,
+                         scaled=True,
+                         title="test data")
