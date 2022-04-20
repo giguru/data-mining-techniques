@@ -19,7 +19,7 @@ DEFAULT_AROUSAL = 0
 DEFAULT_VALENCE = 1
 DEFAULT_MOOD = 7.0
 DEFAULT_SCREENREST = 0
-N_EPOCHS = 20
+N_EPOCHS = 200
 
 data_df = read_data()
 aggregation_actions_per_user_per_day = {
@@ -76,8 +76,31 @@ lstm = LSTM(input_size=20).double()
 criterion = torch.nn.MSELoss()  # mean-squared error for regression
 optimizer = torch.optim.Adam(lstm.parameters(), lr=0.01)
 
+MOOD_INDEX = 0
+
+def do_eval():
+    y_pred_test = []
+    y_true_test = []
+    y_pred_last_mood_test = []
+    total_loss = 0
+    lstm.eval()
+    for user_input_data, user_target_data in tqdm(zip(X_test, y_test), total=len(X_train), desc=f"Evaluating"):
+        _, inputs = user_input_data
+        _, targets = user_target_data
+        for input, target in zip(inputs, targets):
+            trainY = torch.tensor([target]).double()
+            outputs = lstm(torch.tensor([input]).double())
+
+            y_pred_test.append(float(outputs[0]))
+            y_true_test.append(target)
+            y_pred_last_mood_test.append(input[-1][MOOD_INDEX])
+            total_loss += criterion(outputs, trainY)
+    return y_pred_test, y_true_test, y_pred_last_mood_test, total_loss
+
+
 # Train the model
 for epoch in range(N_EPOCHS):
+    lstm.train()
     for user_input_data, user_target_data in tqdm(zip(X_train, y_train), total=len(X_train), desc=f"Epoch {epoch}"):
         _, inputs = user_input_data
         _, targets = user_target_data
@@ -93,22 +116,11 @@ for epoch in range(N_EPOCHS):
             loss.backward()
             optimizer.step()
 
-# Do eval
-y_pred_test = []
-y_true_test = []
-y_pred_last_mood_test = []
-MOOD_INDEX = 0
-for user_input_data, user_target_data in tqdm(zip(X_test, y_test), total=len(X_train), desc=f"Evaluating"):
-    _, inputs = user_input_data
-    _, targets = user_target_data
+    if (epoch + 1) % 10 == 0:
+        _, _, _, total_loss = do_eval()
+        print("Loss: ", total_loss)
 
-    for input, target in zip(inputs, targets):
-        outputs = lstm(torch.tensor([input]).double())
-
-        y_pred_test.append(float(outputs[0]))
-        y_true_test.append(target)
-        y_pred_last_mood_test.append(input[-1][MOOD_INDEX])
-
+y_pred_test, y_true_test, y_pred_last_mood_test, _ = do_eval()
 
 print("Example y_true: ", y_true_test[:10])
 print("Example y_pred: ", y_pred_test[:10])
@@ -133,5 +145,3 @@ for user_input_data, user_target_data in tqdm(zip(X_train, y_train), total=len(X
 compute_metrics(y_true=y_train_flattened,
                 y_pred=predictions_last_mood_train,
                 title="baseline train data")
-
-
