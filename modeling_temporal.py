@@ -1,19 +1,11 @@
 from utils import read_data, VARIABLES_WITH_UNFIXED_RANGE, mean, \
     create_temporal_input, \
-    aggregate_actions_per_user_per_day, dataframe_to_dict_per_day
-import numpy as np
+    aggregate_actions_per_user_per_day, dataframe_to_dict_per_day, get_normalising_constants, apply_normalisation_constants
 from sklearn.metrics import r2_score, confusion_matrix, ConfusionMatrixDisplay
 import matplotlib.pyplot as plt
 from matplotlib.pyplot import figure
 
 figure(figsize=(20, 20), dpi=80)
-
-
-def normalize(means):
-    computed_std = np.std(means)
-    std = computed_std if computed_std > 0 else 1
-    return np.mean(means) / std
-
 
 OUTPUT_PATH = './output/'
 
@@ -59,23 +51,20 @@ per_user_per_day_index = dataframe_to_dict_per_day(data_df,
                                         **({f"{key}_len": lambda current, prev: current or 0 for key in VARIABLES_WITH_UNFIXED_RANGE})
                                     })
 
-# TODO Vincenzo: Decide normalisation constants using training set only
-
-
 # TODO Vincenzo: Feature selection using training set only: e.g. PCA
 
 # Create temporal dataset
-per_user = { # TODO for normalisation
-    'user A': [ # only training records
-        {'featureA': ...},
-        {'featureA': ...},
-        {'featureA': ...},
-        {'featureA': ...},
-    ]
-}
+
 X_train, y_train, X_test, y_test = create_temporal_input(per_user_per_day_index, min_sequence_len=10)
 print("Example input: ", X_train[0])
 print("Example target: ", y_train[0])
+
+# normalize X_train, X_test
+normalisation_constants = get_normalising_constants(data_df)
+X_train = apply_normalisation_constants(X_train, normalisation_constants)
+X_test = apply_normalisation_constants(X_test, normalisation_constants)
+
+# Try to predict how much a user deviate from the USER's mean. So shift and shift back
 
 # TODO Bram: train a temporal model, e.g. LSTM, RNN, etc.
 

@@ -1,6 +1,6 @@
 import pandas as pd
 from utils import process_data, read_data, VARIABLES_WITH_UNFIXED_RANGE, fill_defaults, keep_per_day, mean, \
-    check_existing_folder
+    check_existing_folder, MAX_ATTRIBUTE, FIXED_STD_ATTRIBUTE
 import numpy as np
 import os
 from matplotlib.pyplot import figure
@@ -17,7 +17,7 @@ def scale_features_is_values(df, test_size=0.2, save_csv=True):
     -max: to be scaled by x->x/x_max
     -no_change: x-> x
     Mean, std, max are computed IS and per person.
-    Currently which features belong to which class it is hardcoded
+    Currently which features belong to which class it is hardcoded.
 
     :param df: DataFrame with
     :param test_size: % of entries to place  in test set.
@@ -35,17 +35,7 @@ def scale_features_is_values(df, test_size=0.2, save_csv=True):
     mood_cols = [f'mood_{1+x}_day_before' for x in range(N_DAY_WINDOW)]
     mood_cols_scaled = [f'mood_{1+x}_day_before_scaled' for x in range(N_DAY_WINDOW)]
     cols_2_drop = [col for col in df.columns if col[-3:] == 'sum'] #  these are redundant
-    std_attribute = mood_cols_scaled + ['mood_scaled', 'mood_before_mean', 'screen_mean', 'screen_len', 'amount_screen_mean', 'amount_screen_len',
-                     'screenrest_mean', 'screenrest_len']
-    max_attribute = ['circumplex.arousal_custom', 'circumplex.valence_custom', 'activity_mean', 'call_custom', 'sms_custom',
-                     'appCat.builtin_mean', 'appCat.builtin_len', 'appCat.communication_mean', 'appCat.communication_len',
-                     'appCat.entertainment_mean',
-                     'appCat.entertainment_len', 'appCat.finance_mean', 'appCat.finance_len', 'appCat.game_mean',
-                     'appCat.game_len', 'appCat.office_mean', 'appCat.office_len', 'appCat.other_mean', 'appCat.other_len',
-                     'appCat.social_mean', 'appCat.social_len', 'appCat.travel_mean', 'appCat.travel_len',
-                     'appCat.unknown_mean', 'appCat.unknown_len', 'appCat.utilities_mean', 'appCat.utilities_len',
-                     'appCat.weather_mean', 'appCat.weather_len']
-
+    std_attribute = mood_cols_scaled + FIXED_STD_ATTRIBUTE
     #take DF, assign IS/OS lable, compute mean, return X_train, ...
     this_df = df.copy()
     for i in range(N_DAY_WINDOW):
@@ -59,15 +49,15 @@ def scale_features_is_values(df, test_size=0.2, save_csv=True):
     this_df = this_df.loc[:, to_sort + ['mood_before_mean', 'id']] #reorder
     #select is
     this_df['rand'] = np.random.random_sample(len(this_df))
-    no_change = [cols for cols in this_df.columns if cols not in max_attribute+std_attribute+['id']]
+    no_change = [cols for cols in this_df.columns if cols not in MAX_ATTRIBUTE + std_attribute + ['id']]
     this_df_is = this_df.loc[this_df.rand > test_size]
 
     #parameters for std
     mean_dict = dict(zip(std_attribute, ['mean']*len(std_attribute)))
-    scaling_dict = dict(zip(std_attribute + max_attribute, ['std']*len(std_attribute) + ['max']*len(max_attribute)))
+    scaling_dict = dict(zip(std_attribute + MAX_ATTRIBUTE, ['std'] * len(std_attribute) + ['max'] * len(MAX_ATTRIBUTE)))
 
     is_mean = this_df_is.loc[:, std_attribute+['id']].groupby(['id']).agg(mean_dict)
-    is_mean.loc[:, max_attribute+no_change] = 0
+    is_mean.loc[:, MAX_ATTRIBUTE + no_change] = 0
     is_std = this_df_is.iloc[:, :-1].groupby(['id']).agg(scaling_dict)
     is_std = is_std.replace(0, 1)
     is_std.loc[:, no_change] = 1

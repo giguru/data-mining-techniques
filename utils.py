@@ -1,21 +1,20 @@
 from collections import defaultdict
-from dataclasses import dataclass
 import os
 import pandas as pd
 import numpy as np
-from pandas import DataFrame, Series
+from pandas import DataFrame
 from typing import List, Dict, Callable, Union, Any
 from tqdm import tqdm
 from datetime import datetime
 import math
 from copy import copy
-from sklearn.model_selection import train_test_split
 
 
 __all__ = [
     'SECONDS_IN_DAY', 'VARIABLES_WITH_UNFIXED_RANGE', 'read_data', 'process_data',
     'get_subset_by_variable', 'fill_defaults', 'keep_per_day', 'mean', 'check_existing_folder',
-    'create_temporal_input', 'dataframe_to_dict_per_day'
+    'create_temporal_input', 'dataframe_to_dict_per_day', 'MAX_ATTRIBUTE', 'get_normalising_constants',
+    'FIXED_STD_ATTRIBUTE', 'apply_normalisation_constants'
 ]
 
 DATE_FORMAT = '%Y-%m-%d'
@@ -41,16 +40,31 @@ VARIABLES_WITH_UNFIXED_RANGE = [
     'amount_screen',
     'screenrest'
 ]
+FIXED_STD_ATTRIBUTE = ['mood_scaled', 'mood_before_mean', 'screen_mean', 'screen_len', 'amount_screen_mean',
+                       'amount_screen_len',
+                       'screenrest_mean', 'screenrest_len']
+MAX_ATTRIBUTE = ['circumplex.arousal_custom', 'circumplex.valence_custom', 'activity_mean', 'call_custom', 'sms_custom',
+                 'appCat.builtin_mean', 'appCat.builtin_len', 'appCat.communication_mean', 'appCat.communication_len',
+                 'appCat.entertainment_mean',
+                 'appCat.entertainment_len', 'appCat.finance_mean', 'appCat.finance_len', 'appCat.game_mean',
+                 'appCat.game_len', 'appCat.office_mean', 'appCat.office_len', 'appCat.other_mean', 'appCat.other_len',
+                 'appCat.social_mean', 'appCat.social_len', 'appCat.travel_mean', 'appCat.travel_len',
+                 'appCat.unknown_mean', 'appCat.unknown_len', 'appCat.utilities_mean', 'appCat.utilities_len',
+                 'appCat.weather_mean', 'appCat.weather_len']
 
 
-@dataclass
-class DatasetRow(dict):
-    id: str
-    time: np.datetime64
-    timestamp: np.int64
-    value: np.float64
-    variable: str
-    week_day: np.int64
+def apply_normalisation_constants(X_train, normalisation_constants: Dict[str, Dict[str, Dict[str, float]]]):
+    for idx in range(len(X_train)):
+        user_id, batched_user_input_records = X_train[idx]
+        for batch_input_records in batched_user_input_records:
+            for record in batch_input_records:
+                for feature_key, feature_value in record.items():
+                    if feature_key in MAX_ATTRIBUTE:
+                        new_value = feature_value / normalisation_constants[user_id][feature_key]['max']
+                        record[feature_key] = new_value
+                    elif feature_key in FIXED_STD_ATTRIBUTE:
+                        new_value = (feature_value - normalisation_constants[user_id][feature_key]['mean']) / normalisation_constants[user_id][feature_key]['std']
+                        record[feature_key] = new_value
 
 
 def read_data(**kwargs):
@@ -240,6 +254,33 @@ def process_data(df: DataFrame,
     return records
 
 
+def get_normalising_constants(df):
+
+    per_user_per_feature = {}
+    for _, r in tqdm(df.iterrows(), total=len(df), desc="Creating aggregated index for normalisation..."):
+        variable, user_id = r['variable'], r['id']
+        if user_id not in per_user_per_feature:
+            per_user_per_feature[user_id] = defaultdict(list)
+
+        per_user_per_feature[user_id][variable].append(r['value'])
+
+    user_feature_normalisation_constants = {}
+    for user_id, user_features in tqdm(per_user_per_feature.items(),
+                                       total=len(per_user_per_feature),
+                                       desc="Compute normalisation constants for each user-feature combination"):
+        user_feature_normalisation_constants[user_id] = {}
+
+        for feature_key, feature_values in user_features.items():
+            computed_std = np.std(feature_values)
+
+            user_feature_normalisation_constants[user_id][feature_key] = {
+                'max': max(feature_values),
+                'mean': mean(feature_values),
+                'std': computed_std if computed_std > 0 else 1
+            }
+    return user_feature_normalisation_constants
+
+
 def dataframe_to_dict_per_day(df: DataFrame, default_callables: Dict[str, Callable]):
     """
 
@@ -347,3 +388,4 @@ def create_temporal_input(per_user_per_day: Dict[str, dict],
         total_y_test.append((user_id, list(user_targets[idx:])))
 
     return total_x_train, total_y_train, total_x_test, total_y_test
+
