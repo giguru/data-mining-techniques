@@ -67,13 +67,13 @@ def compute_metrics(y_true, y_pred, title: str, scaled: bool = False):
     plt.show()
 
 
-def get_selected_attributes(path):
+def get_selected_attributes(path, extend_attr: List[str]=[]):
     attributes = pd.read_csv(os.path.join(path, 'selected_attributes.csv'))
     n_cols = len(attributes.columns)
     this_attr = []
     for i in range(n_cols):
         this_attr = this_attr + list(attributes[str(i)].dropna().values)
-    return set(this_attr)
+    return set(this_attr + extend_attr)
 
 
 def apply_normalisation_constants(X_inputs, normalisation_constants: Dict[str, Dict[str, Dict[str, float]]]):
@@ -114,7 +114,7 @@ def read_data(**kwargs):
             continue
 
     df = df.drop(indices_to_drop)
-    print(invalid_rows)
+    # print(invalid_rows)
     print(f"There are {len(invalid_rows)} invalid rows for {list({item[1] for item in invalid_rows})}")
     return df
 
@@ -349,10 +349,11 @@ def dataframe_to_dict_per_day(df: DataFrame, default_callables: Dict[str, Callab
         for date, found_features_dict in features_per_day.items():
             defaults = {}
             for key, func in default_callables.items():
-                defaults[key] = func(
-                    found_features_dict[key] if key in found_features_dict else None,
-                    prev_day_features[key] if key in prev_day_features else None
-                )
+                if key in keep_features:
+                    defaults[key] = func(
+                        found_features_dict[key] if key in found_features_dict else None,
+                        prev_day_features[key] if key in prev_day_features else None
+                    )
 
             per_user_per_day[user_id][date] = {
                 **defaults,

@@ -3,7 +3,12 @@ import torch.nn as nn
 from torch.autograd import Variable
 
 class LSTM(nn.Module):
-    def __init__(self, num_classes=1, input_size=47, hidden_size=2, num_layers=1, seq_length=10):
+    def __init__(self,
+                 num_classes=1,  # Single output, since we are doing regression
+                 input_size=51,
+                 hidden_size=2,
+                 num_layers=1,
+                 seq_length=10):
         super(LSTM, self).__init__()
 
         self.num_classes = num_classes
@@ -18,11 +23,9 @@ class LSTM(nn.Module):
         self.fc = nn.Linear(hidden_size, num_classes)
 
     def forward(self, x):
-        h_0 = Variable(torch.zeros(
-            self.num_layers, x.size(0), self.hidden_size))
-
-        c_0 = Variable(torch.zeros(
-            self.num_layers, x.size(0), self.hidden_size))
+        batch_size = x.size(0)
+        h_0 = torch.zeros(self.num_layers, batch_size, self.hidden_size).double().requires_grad_()
+        c_0 = torch.zeros(self.num_layers, batch_size, self.hidden_size).double().requires_grad_()
 
         # Propagate input through LSTM
         ula, (h_out, _) = self.lstm(x, (h_0, c_0))
