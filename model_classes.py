@@ -5,7 +5,7 @@ from torch.autograd import Variable
 class LSTM(nn.Module):
     def __init__(self,
                  num_classes=1,  # Single output, since we are doing regression
-                 input_size=51,
+                 input_size=20,
                  hidden_size=2,
                  num_layers=1,
                  seq_length=10):

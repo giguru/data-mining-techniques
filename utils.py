@@ -7,7 +7,7 @@ from typing import List, Dict, Callable, Union, Any, Set
 from tqdm import tqdm
 from datetime import datetime
 import math
-from copy import copy
+from copy import copy, deepcopy
 from sklearn.metrics import r2_score, confusion_matrix, ConfusionMatrixDisplay
 import matplotlib.pyplot as plt
 
@@ -45,6 +45,7 @@ VARIABLES_WITH_UNFIXED_RANGE = [
 ]
 FIXED_STD_ATTRIBUTE = ['mood_scaled', 'mood_before_mean', 'screen_mean', 'screen_len', 'amount_screen_mean',
                        'amount_screen_len',
+                       'mood_mean',
                        'screenrest_mean', 'screenrest_len']
 MAX_ATTRIBUTE = ['circumplex.arousal_custom', 'circumplex.valence_custom', 'activity_mean', 'call_custom', 'sms_custom',
                  'appCat.builtin_mean', 'appCat.builtin_len', 'appCat.communication_mean', 'appCat.communication_len',
@@ -89,13 +90,20 @@ def apply_normalisation_constants(X_inputs, normalisation_constants: Dict[str, D
                         record[feature_key] = new_value
                     elif feature_key in FIXED_STD_ATTRIBUTE:
                         new_value = (feature_value - n_constants['mean']) / n_constants['std']
+                        if abs(new_value) > 10:
+                            print(f"Exploding value for user {user_id} feature {feature_key}: {new_value}")
                         record[feature_key] = new_value
     return X_inputs
 
 
 def read_data(**kwargs):
+    filename = 'newdata.csv'
     dtypes = {}
-    df = pd.read_csv('newdata.csv', dtype=dtypes, parse_dates=['time'], **kwargs)
+    df = pd.read_csv(filename, dtype=dtypes, parse_dates=['time'], **kwargs)
+
+    # Remove records with value NA
+    print("Removed ", len(df[df['value'] == 'NA']), " records from ", filename)
+    df = df[df['value'] != 'NA']
 
     # Added timestamp for computational optimization
     df['timestamp'] = df['time'].values.astype(np.int64) // 10 ** 9  # divide by 10^9, because value is in nanoseconds
@@ -103,19 +111,6 @@ def read_data(**kwargs):
     # Added day of the week, because people have biases towards e.g. Mondays
     df['week_day'] = df['time'].dt.dayofweek
 
-    invalid_rows = []
-    indices_to_drop = []
-
-    for index, row in tqdm(df.iterrows(), total=len(df), desc="Removing records with invalid values"):
-        if math.isnan(row['value']):
-            indices_to_drop.append(index)
-            invalid_rows.append((index, row['variable'], row['value']))
-            # Do not add rows with invalid values
-            continue
-
-    df = df.drop(indices_to_drop)
-    # print(invalid_rows)
-    print(f"There are {len(invalid_rows)} invalid rows for {list({item[1] for item in invalid_rows})}")
     return df
 
 
@@ -344,7 +339,7 @@ def dataframe_to_dict_per_day(df: DataFrame, default_callables: Dict[str, Callab
 
             per_user_per_day[user_id][date][variable] = r['value']
 
-    for user_id, features_per_day in dict(per_user_per_day).items():
+    for user_id, features_per_day in tqdm(dict(per_user_per_day).items(), desc="Creating dataframe of feature per user per day with defaults"):
         prev_day_features = {}
         for date, found_features_dict in features_per_day.items():
             defaults = {}
@@ -360,7 +355,7 @@ def dataframe_to_dict_per_day(df: DataFrame, default_callables: Dict[str, Callab
                 # Overwrite with found features
                 **found_features_dict
             }
-            prev_day_features = copy(per_user_per_day[user_id][date])
+            prev_day_features = per_user_per_day[user_id][date]
 
     return per_user_per_day
 
@@ -405,8 +400,8 @@ def create_temporal_input(per_user_per_day: Dict[str, dict],
                 input_records = list(all_user_records[start_input_index:last_input_index])
                 target = all_user_records[current_index][mood_key]
 
-                user_inputs.append(input_records)
-                user_targets.append(target)
+                user_inputs.append(deepcopy(input_records))
+                user_targets.append(deepcopy(target))
 
         user_targets = np.array(user_targets)
         user_inputs = np.array(user_inputs)
@@ -422,9 +417,13 @@ def create_temporal_input(per_user_per_day: Dict[str, dict],
 
 
 def convert_to_list(two_d_lists):
+    """
+    Converts nd.arrays and dicts into list
+    """
     for i in range(len(two_d_lists)):
         for j in range(len(two_d_lists[i][1])):
             for k in range(len(two_d_lists[i][1][j])):
                 two_d_lists[i][1][j][k] = list(two_d_lists[i][1][j][k].values())
+            two_d_lists[i][1][j] = list(two_d_lists[i][1][j])
     return two_d_lists
 

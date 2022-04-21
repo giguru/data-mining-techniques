@@ -9,6 +9,7 @@ from model_classes import LSTM
 from tqdm import tqdm
 import numpy as np
 import random
+from sklearn.metrics import r2_score
 
 
 random.seed(42)
@@ -25,7 +26,7 @@ DEFAULT_AROUSAL = 0
 DEFAULT_VALENCE = 1
 DEFAULT_MOOD = 7.0
 DEFAULT_SCREENREST = 0
-N_EPOCHS = 120
+N_EPOCHS = 200
 
 data_df = read_data()
 aggregation_actions_per_user_per_day = {
@@ -63,9 +64,7 @@ per_user_per_day_index = dataframe_to_dict_per_day(
 )
 
 # Create temporal dataset
-X_train, y_train, X_test, y_test = create_temporal_input(per_user_per_day_index, min_sequence_len=10)
-print("Example input: ", X_train[0])
-print("Example target: ", y_train[0])
+X_train, y_train, X_test, y_test = create_temporal_input(per_user_per_day_index, min_sequence_len=10, max_sequence_len=10)
 
 # normalize X_train, X_test
 normalisation_constants = get_normalising_constants(data_df)
@@ -73,16 +72,22 @@ X_train = apply_normalisation_constants(X_train, normalisation_constants)
 X_test = apply_normalisation_constants(X_test, normalisation_constants)
 
 # convert dicts to lists of floats
+feature_labels = X_train[0][1][0][0].keys()
 X_train = convert_to_list(X_train)
 X_test = convert_to_list(X_test)
+
+print("Example features: ", feature_labels)
+print("Example input: ", X_train[0][1][0])
+print("Example target: ", y_train[0][1][0])
 
 # Try to predict how much a user deviate from the USER's mean. So shift and shift back
 lstm = LSTM(input_size=20).double()
 
 criterion = torch.nn.MSELoss()  # mean-squared error for regression
-optimizer = torch.optim.Adam(lstm.parameters(), lr=0.01)
+optimizer = torch.optim.Adam(lstm.parameters(), lr=0.001)
 
 MOOD_INDEX = 0
+
 
 def do_eval():
     y_pred_test = []
@@ -105,7 +110,7 @@ def do_eval():
 
 
 # Train the model
-train_losses = []
+train_losses, scores = [], []
 for epoch in range(N_EPOCHS):
     lstm.train()
     for user_input_data, user_target_data in tqdm(zip(X_train, y_train), total=len(X_train), desc=f"Epoch {epoch}"):
@@ -124,9 +129,11 @@ for epoch in range(N_EPOCHS):
             optimizer.step()
 
     if epoch % 10 == 0:
-        _, _, _, total_loss = do_eval()
-        print("Loss: ", total_loss)
+        y_pred_eval, y_true_eval, _, total_loss = do_eval()
+        score = r2_score(y_true=y_true_eval, y_pred=y_pred_eval)
+        print("Loss: ", total_loss.item(), " Score:", score)
         train_losses.append(total_loss.item())
+        scores.append(score)
 
 plt.plot(train_losses)
 plt.show()
@@ -137,11 +144,13 @@ print("Example y_true: ", y_true_test[:10])
 print("Example y_pred: ", y_pred_test[:10])
 compute_metrics(y_true=y_true_test,
                 y_pred=y_pred_test,
+                scaled=True,
                 title="temporal data")
 
 # Compute two baseline. Simply take the mood the day before and take the average mood.
 compute_metrics(y_true=y_true_test,
                 y_pred=y_pred_last_mood_test,
+                scaled=True,
                 title="baseline test data")
 
 predictions_last_mood_train, y_train_flattened = [], []
@@ -155,4 +164,5 @@ for user_input_data, user_target_data in tqdm(zip(X_train, y_train), total=len(X
 
 compute_metrics(y_true=y_train_flattened,
                 y_pred=predictions_last_mood_train,
+                scaled=True,
                 title="baseline train data")
