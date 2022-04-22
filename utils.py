@@ -8,7 +8,7 @@ from tqdm import tqdm
 from datetime import datetime
 import math
 from copy import copy, deepcopy
-from sklearn.metrics import r2_score, confusion_matrix, ConfusionMatrixDisplay
+from sklearn.metrics import mean_squared_error, confusion_matrix, ConfusionMatrixDisplay
 import matplotlib.pyplot as plt
 
 
@@ -59,7 +59,7 @@ MAX_ATTRIBUTE = ['circumplex.arousal_custom', 'circumplex.valence_custom', 'acti
 
 def compute_metrics(y_true, y_pred, title: str, scaled: bool = False):
     mood_labels = [-3, -2, -1, 0, 1, 2, 3] if scaled else [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
-    print(f"R2 score - {title}", r2_score(y_true=y_true, y_pred=y_pred))
+    print(f"MSE score - {title}", mean_squared_error(y_true=y_true, y_pred=y_pred))
     cm = confusion_matrix(y_true=[round(v) for v in y_true],
                           y_pred=[round(v) for v in y_pred],
                           labels=mood_labels)
