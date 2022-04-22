@@ -23,13 +23,13 @@ class LSTM(nn.Module):
 
         batch_size = 1
         self.h_0 = Variable(torch.zeros(self.num_layers, batch_size, self.hidden_size).double())
-        torch.nn.init.xavier_normal_(self.h_0)
+        torch.nn.init.normal_(self.h_0)
 
         self.c_0 = Variable(torch.zeros(self.num_layers, batch_size, self.hidden_size).double())
-        torch.nn.init.xavier_normal_(self.c_0)
+        torch.nn.init.normal_(self.c_0)
 
         self.fc = nn.Linear(hidden_size, num_classes)
-        torch.nn.init.xavier_normal_(self.fc.weight)
+        torch.nn.init.normal_(self.fc.weight)
 
     def forward(self, x):
         # Propagate input through LSTM

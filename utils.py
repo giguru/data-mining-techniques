@@ -59,12 +59,12 @@ MAX_ATTRIBUTE = ['circumplex.arousal_custom', 'circumplex.valence_custom', 'acti
 
 def compute_metrics(y_true, y_pred, title: str, scaled: bool = False):
     mood_labels = [-3, -2, -1, 0, 1, 2, 3] if scaled else [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
-    print(f"MSE score - {title}", mean_squared_error(y_true=y_true, y_pred=y_pred))
+    print(f"MSE score - {title} (n={len(y_true)})", mean_squared_error(y_true=y_true, y_pred=y_pred))
     cm = confusion_matrix(y_true=[round(v) for v in y_true],
                           y_pred=[round(v) for v in y_pred],
                           labels=mood_labels)
     ConfusionMatrixDisplay(confusion_matrix=cm, display_labels=mood_labels).plot()
-    plt.title(f"Confusion matrix - {title}")
+    plt.title(f"Confusion matrix - {title} (n={len(y_true)})")
     plt.show()
 
 
@@ -92,7 +92,8 @@ def apply_normalisation_constants(X_inputs, normalisation_constants: Dict[str, D
                         new_value = feature_value / n_constants['max']
                         record[feature_key] = new_value
                     elif feature_key in FIXED_STD_ATTRIBUTE:
-                        new_value = (feature_value - n_constants['mean']) / n_constants['std']
+                        used_value = feature_value or n_constants['mean']
+                        new_value = (used_value - n_constants['mean']) / n_constants['std']
                         if abs(new_value) > 10:
                             print(f"Exploding value for user {user_id} feature {feature_key}: {new_value}")
                         record[feature_key] = new_value
@@ -405,10 +406,10 @@ def create_temporal_input(per_user_per_day: Dict[str, dict],
             start_input_index = max(0, current_index - max_sequence_len)
             last_input_index = current_index-1
 
-            if mood_key in all_user_records[current_index]:
+            if mood_key in all_user_records[current_index] and all_user_records[current_index][mood_key] is not None:
                 input_records = list(all_user_records[start_input_index:last_input_index])
-                target = all_user_records[current_index][mood_key]
 
+                target = all_user_records[current_index][mood_key]
                 user_inputs.append(deepcopy(input_records))
                 user_targets.append(deepcopy(target))
 

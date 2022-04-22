@@ -2,7 +2,6 @@ from utils import read_data, VARIABLES_WITH_UNFIXED_RANGE, mean, \
     create_temporal_input, \
     aggregate_actions_per_user_per_day, dataframe_to_dict_per_day, get_normalising_constants, \
     apply_normalisation_constants, compute_metrics, get_selected_attributes, convert_to_list
-from matplotlib.pyplot import figure
 import matplotlib.pyplot as plt
 import torch
 from model_classes import LSTM
@@ -16,7 +15,6 @@ random.seed(42)
 torch.manual_seed(42)
 np.random.seed(42)
 
-figure(figsize=(20, 20), dpi=80)
 
 OUTPUT_PATH = './output/'
 
@@ -24,23 +22,30 @@ DEFAULT_CALL = 0.
 DEFAULT_SMS = 0.
 DEFAULT_AROUSAL = 0.
 DEFAULT_VALENCE = 1.
-DEFAULT_MOOD = 0.
 DEFAULT_SCREENREST = 0.
+USE_LAST = False
 
-
-N_EPOCHS = 140
+N_EPOCHS = 40
 LEARNING_RATE = 1e-3
 DROPOUT = 0.2
 KEEP_FEATURES = get_selected_attributes(OUTPUT_PATH, ['mood_mean'])
-INPUT_SIZE = 20
-HIDDEN_SIZE = 10
-ACCUM_ITER = 4
+INPUT_SIZE = 21
+HIDDEN_LAYERS = 1
+# hidden_size=16, hidden_layers=1, epochs 40, => test MSE=1.182
+# hidden_size=15, hidden_layers=1, epochs 40 => test MSE=1.102
+# hidden_size=14, hidden_layers=1, epochs 40 => test MSE=0.9115
+# hidden_size=13, hidden_layers=1, epochs 40 => test MSE=1.230
+
+# hidden_size=14, hidden_layers=1, epochs 35 => test MSE=0.871
+# hidden_size=14, hidden_layers=1, epochs 130 => test MSE=1.005
+# hidden_size=14, hidden_layers=2, epochs 130 => test MSE=1.211
+HIDDEN_SIZE = 14
+
 print("Lr: ", LEARNING_RATE,
       'Epochs: ', N_EPOCHS,
       "Dropout:", DROPOUT,
       "Hidden size:", HIDDEN_SIZE,
       "Input size:", INPUT_SIZE,
-      "Gradient accum.:", ACCUM_ITER,
       "Features (not necessarily used): ", len(KEEP_FEATURES), KEEP_FEATURES)
 
 data_df = read_data()
@@ -65,7 +70,7 @@ normalisation_constants = get_normalising_constants(data_df)
 per_user_per_day_index = dataframe_to_dict_per_day(
     data_df,
     default_callables={
-        'mood_mean': lambda current, prev, user_id: current or normalisation_constants[user_id]['mood_mean']['mean'],
+        'mood_mean': lambda current, prev, u_id: current or None,
         'circumplex.arousal_mean': lambda current, prev, _: current or DEFAULT_AROUSAL,
         'circumplex.valence_mean': lambda current, prev, _: current or DEFAULT_VALENCE,
         'activity_sum': lambda current, prev, _: current or 0,
@@ -83,7 +88,8 @@ per_user_per_day_index = dataframe_to_dict_per_day(
 # Create temporal dataset
 X_train, y_train, X_test, y_test = create_temporal_input(per_user_per_day_index,
                                                          min_sequence_len=10,
-                                                         max_sequence_len=10)
+                                                         max_sequence_len=10,
+                                                         train_size=0.9)
 
 # normalize X_train, X_test
 X_train = apply_normalisation_constants(X_train, normalisation_constants)
@@ -99,7 +105,7 @@ print("Example input: ", X_train[0][1][0])
 print("Example target: ", y_train[0][1][0])
 
 # Try to predict how much a user deviate from the USER's mean. So shift and shift back
-lstm = LSTM(input_size=INPUT_SIZE, dropout_rate=DROPOUT, hidden_size=HIDDEN_SIZE).double()
+lstm = LSTM(input_size=INPUT_SIZE, dropout_rate=DROPOUT, hidden_size=HIDDEN_SIZE, num_layers=HIDDEN_LAYERS).double()
 
 criterion = torch.nn.MSELoss()  # mean-squared error for regression
 optimizer = torch.optim.Adam(lstm.parameters(), lr=LEARNING_RATE)
@@ -107,6 +113,7 @@ MOOD_INDEX = 0
 
 best_score = 10000
 best_model = None
+best_model_epoch = -1
 
 def do_eval(x_inputs, y_test):
     y_pred_test = []
@@ -118,15 +125,15 @@ def do_eval(x_inputs, y_test):
         test_user_id, inputs = user_input_data
         _, targets = user_target_data
         for input, target in zip(inputs, targets):
-            normalised_target = (target - normalisation_constants[test_user_id]['mood_mean']['mean']) / normalisation_constants[test_user_id]['mood_mean']['std']
             input_tensor = torch.tensor([input]).double()
             outputs = lstm(input_tensor)
-            pred = float(outputs[0]) * normalisation_constants[test_user_id]['mood_mean']['std'] + normalisation_constants[test_user_id]['mood_mean']['mean']
+            pred = denormalise(float(outputs[0]), user_id)
 
             y_pred_test.append(pred)
             y_true_test.append(target)
-            y_pred_last_mood_test.append(input[-1][MOOD_INDEX] * normalisation_constants[test_user_id]['mood_mean']['std'] + normalisation_constants[test_user_id]['mood_mean']['mean'])
+            y_pred_last_mood_test.append(denormalise(input[-1][MOOD_INDEX], test_user_id))
 
+            normalised_target = normalise(target, test_user_id)
             trainY = torch.tensor([normalised_target]).double()
             total_loss += criterion(outputs[0], trainY)
     return y_pred_test, y_true_test, y_pred_last_mood_test, total_loss
@@ -134,6 +141,10 @@ def do_eval(x_inputs, y_test):
 
 def normalise(t, u_id):
     return (t - normalisation_constants[u_id]['mood_mean']['mean']) / normalisation_constants[u_id]['mood_mean']['std']
+
+
+def denormalise(t, u_id):
+    return t * normalisation_constants[u_id]['mood_mean']['std'] + normalisation_constants[u_id]['mood_mean']['mean']
 
 # Train the model
 train_losses, scores = [], []
@@ -155,17 +166,21 @@ for epoch in range(N_EPOCHS):
             optimizer.step()
             optimizer.zero_grad()
 
-    if epoch % 10 == 0:
+    if epoch % 5 == 0:
         y_pred_eval, y_true_eval, _, total_loss = do_eval(X_train, y_train)
         score = mean_squared_error(y_true=y_true_eval, y_pred=y_pred_eval)
         print("Loss: ", total_loss.item(), " Score:", score)
         train_losses.append(total_loss.item())
         scores.append(score)
         if score < best_score:
+            best_score = score
             best_model = lstm.state_dict()
+            best_model_epoch = epoch
 
 # load best model
-lstm.load_state_dict(best_model)
+if not USE_LAST:
+    print("Loading best model at epoch=", best_model_epoch, "with best score=", best_score)
+    lstm.load_state_dict(best_model)
 
 plt.plot(train_losses)
 plt.title("Training loss")
@@ -202,7 +217,7 @@ for user_input_data, user_target_data in tqdm(zip(X_train, y_train), total=len(X
     _, targets = user_target_data
 
     for input, target in zip(inputs, targets):
-        denormalised_target = input[-1][MOOD_INDEX] * normalisation_constants[user_id]['mood_mean']['std'] + normalisation_constants[user_id]['mood_mean']['mean']
+        denormalised_target = denormalise(input[-1][MOOD_INDEX], user_id)
         predictions_last_mood_train.append(denormalised_target)
         y_train_flattened.append(target)
 
