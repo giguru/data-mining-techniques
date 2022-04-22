@@ -8,7 +8,7 @@ from tqdm import tqdm
 from datetime import datetime
 import math
 from copy import copy, deepcopy
-from sklearn.metrics import mean_squared_error, confusion_matrix, ConfusionMatrixDisplay
+from sklearn.metrics import confusion_matrix, ConfusionMatrixDisplay, mean_squared_error
 import matplotlib.pyplot as plt
 
 
@@ -83,6 +83,9 @@ def apply_normalisation_constants(X_inputs, normalisation_constants: Dict[str, D
         for batch_input_records in batched_user_input_records:
             for record in batch_input_records:
                 for feature_key, feature_value in record.items():
+                    if feature_key == 'week_day_custom':
+                        # skip
+                        continue
                     # If there is no normalising constants for the user, use the defaults
                     n_constants = normalisation_constants[user_id][feature_key] if feature_key in normalisation_constants[user_id] else normalisation_constants['default'][feature_key]
                     if feature_key in MAX_ATTRIBUTE:
@@ -333,7 +336,12 @@ def dataframe_to_dict_per_day(df: DataFrame, default_callables: Dict[str, Callab
                 per_user_per_day[user_id] = {}
 
             if date not in per_user_per_day[user_id]:
-                per_user_per_day[user_id][date] = {}
+                week_day = float(datetime.strptime(date, DATE_FORMAT).strftime('%w'))
+                if week_day == 0.0:
+                    week_day = 7.
+                per_user_per_day[user_id][date] = {
+                    'week_day_custom': week_day - 4.0,
+                }
 
             assert variable not in per_user_per_day[user_id][date], "The records must have already been aggregated per user per day"
 
