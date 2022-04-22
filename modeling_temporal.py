@@ -20,13 +20,28 @@ figure(figsize=(20, 20), dpi=80)
 
 OUTPUT_PATH = './output/'
 
-DEFAULT_CALL = 0
-DEFAULT_SMS = 0
-DEFAULT_AROUSAL = 0
-DEFAULT_VALENCE = 1
-DEFAULT_MOOD = 7.0
-DEFAULT_SCREENREST = 0
-N_EPOCHS = 200
+DEFAULT_CALL = 0.
+DEFAULT_SMS = 0.
+DEFAULT_AROUSAL = 0.
+DEFAULT_VALENCE = 1.
+DEFAULT_MOOD = 0.
+DEFAULT_SCREENREST = 0.
+
+
+N_EPOCHS = 140
+LEARNING_RATE = 1e-6
+DROPOUT = 0.2
+KEEP_FEATURES = get_selected_attributes(OUTPUT_PATH, ['mood_mean'])
+INPUT_SIZE = 20
+HIDDEN_SIZE = 10
+ACCUM_ITER = 4
+print("Lr: ", LEARNING_RATE,
+      'Epochs: ', N_EPOCHS,
+      "Dropout:", DROPOUT,
+      "Hidden size:", HIDDEN_SIZE,
+      "Input size:", INPUT_SIZE,
+      "Gradient accum.:", ACCUM_ITER,
+      "Features: ", len(KEEP_FEATURES), KEEP_FEATURES)
 
 data_df = read_data()
 aggregation_actions_per_user_per_day = {
@@ -45,29 +60,32 @@ for variable_key, agg_func in aggregation_actions_per_user_per_day.items():
 
 data_df.sort_values(by=['timestamp'], inplace=True)
 
+normalisation_constants = get_normalising_constants(data_df)
+
 per_user_per_day_index = dataframe_to_dict_per_day(
     data_df,
     default_callables={
-        'mood_mean': lambda current, prev: current or prev or DEFAULT_MOOD,
-        'circumplex.arousal_mean': lambda current, prev: current or DEFAULT_AROUSAL,
-        'circumplex.valence_mean': lambda current, prev: current or DEFAULT_VALENCE,
-        'activity_sum': lambda current, prev: current or 0,
-        'call_sum': lambda current, prev: current or DEFAULT_CALL,
-        'sms_sum': lambda current, prev: current or DEFAULT_SMS,
-        'screenrest_mean': lambda current, prev: current or DEFAULT_SCREENREST,
-        'screenrest_len': lambda current, prev: current or DEFAULT_SCREENREST,
-        **({f"{key}_mean": lambda current, prev: current or 0 for key in VARIABLES_WITH_UNFIXED_RANGE}),
-        **({f"{key}_sum": lambda current, prev: current or 0 for key in VARIABLES_WITH_UNFIXED_RANGE}),
-        **({f"{key}_len": lambda current, prev: current or 0 for key in VARIABLES_WITH_UNFIXED_RANGE})
+        'mood_mean': lambda current, prev, user_id: current or normalisation_constants[user_id]['mood_mean']['mean'],
+        'circumplex.arousal_mean': lambda current, prev, _: current or DEFAULT_AROUSAL,
+        'circumplex.valence_mean': lambda current, prev, _: current or DEFAULT_VALENCE,
+        'activity_sum': lambda current, prev, _: current or 0,
+        'call_sum': lambda current, prev, _: current or DEFAULT_CALL,
+        'sms_sum': lambda current, prev, _: current or DEFAULT_SMS,
+        'screenrest_mean': lambda current, prev, _: current or DEFAULT_SCREENREST,
+        'screenrest_len': lambda current, prev, _: current or DEFAULT_SCREENREST,
+        **({f"{key}_mean": lambda current, prev, _: current or 0 for key in VARIABLES_WITH_UNFIXED_RANGE}),
+        **({f"{key}_sum": lambda current, prev, _: current or 0 for key in VARIABLES_WITH_UNFIXED_RANGE}),
+        **({f"{key}_len": lambda current, prev, _: current or 0 for key in VARIABLES_WITH_UNFIXED_RANGE})
     },
-    keep_features=get_selected_attributes(OUTPUT_PATH, ['mood_mean'])
+    keep_features=KEEP_FEATURES
 )
 
 # Create temporal dataset
-X_train, y_train, X_test, y_test = create_temporal_input(per_user_per_day_index, min_sequence_len=10, max_sequence_len=10)
+X_train, y_train, X_test, y_test = create_temporal_input(per_user_per_day_index,
+                                                         min_sequence_len=10,
+                                                         max_sequence_len=10)
 
 # normalize X_train, X_test
-normalisation_constants = get_normalising_constants(data_df)
 X_train = apply_normalisation_constants(X_train, normalisation_constants)
 X_test = apply_normalisation_constants(X_test, normalisation_constants)
 
@@ -81,11 +99,10 @@ print("Example input: ", X_train[0][1][0])
 print("Example target: ", y_train[0][1][0])
 
 # Try to predict how much a user deviate from the USER's mean. So shift and shift back
-lstm = LSTM(input_size=20).double()
+lstm = LSTM(input_size=INPUT_SIZE, dropout_rate=DROPOUT, hidden_size=HIDDEN_SIZE).double()
 
 criterion = torch.nn.MSELoss()  # mean-squared error for regression
-optimizer = torch.optim.Adam(lstm.parameters(), lr=0.001)
-
+optimizer = torch.optim.Adam(lstm.parameters(), lr=LEARNING_RATE)
 MOOD_INDEX = 0
 
 

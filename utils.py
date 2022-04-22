@@ -347,7 +347,8 @@ def dataframe_to_dict_per_day(df: DataFrame, default_callables: Dict[str, Callab
                 if key in keep_features:
                     defaults[key] = func(
                         found_features_dict[key] if key in found_features_dict else None,
-                        prev_day_features[key] if key in prev_day_features else None
+                        prev_day_features[key] if key in prev_day_features else None,
+                        user_id
                     )
 
             per_user_per_day[user_id][date] = {
